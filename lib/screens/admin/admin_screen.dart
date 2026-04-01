@@ -7,8 +7,10 @@ import '../../l10n/locale_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_period.dart';
 import '../../models/ibadat_profile.dart';
+import '../../models/invite_code.dart';
 import '../../repositories/ibadat_group_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
+import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
 
 class AdminScreen extends StatefulWidget {
@@ -35,6 +37,7 @@ class _AdminScreenState extends State<AdminScreen> {
   late final IbadatGroupRepository _groupRepo;
   late final ProfileRepository _profileRepo;
   late final IbadatPeriodRepository _periodRepo;
+  late final InviteCodeRepository _codeRepo;
 
   // Super admin data
   List<IbadatGroup> _allGroups = [];
@@ -48,6 +51,9 @@ class _AdminScreenState extends State<AdminScreen> {
   List<IbadatPeriod> _periods = [];
 
   bool _isLoading = true;
+  InviteCode? _activeUserCode;
+  InviteCode? _activeAdminCode;
+  bool _generatingCode = false;
   final _newGroupCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _periodLabelCtrl = TextEditingController();
@@ -69,6 +75,7 @@ class _AdminScreenState extends State<AdminScreen> {
     _groupRepo = IbadatGroupRepository(client);
     _profileRepo = ProfileRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
+    _codeRepo = InviteCodeRepository(client);
     _loadData();
   }
 
@@ -126,8 +133,53 @@ class _AdminScreenState extends State<AdminScreen> {
           _isLoading = false;
         });
       }
+      // Load active invite codes
+      if (_isSuperAdmin) {
+        _activeAdminCode = await _codeRepo.getActiveAdminCode(widget.profile.id);
+      } else if (widget.profile.isAdmin) {
+        _activeUserCode = await _codeRepo.getActiveUserCode(widget.group.id);
+      }
     } catch (_) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _generateUserCode() async {
+    setState(() => _generatingCode = true);
+    try {
+      final code = await _codeRepo.generateUserCode(
+        groupId: widget.group.id,
+        createdBy: widget.profile.id,
+      );
+      setState(() {
+        _activeUserCode = code;
+        _generatingCode = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _generatingCode = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${S.of(context).error}: $e')),
+      );
+    }
+  }
+
+  Future<void> _generateAdminCode() async {
+    setState(() => _generatingCode = true);
+    try {
+      final code = await _codeRepo.generateAdminCode(
+        createdBy: widget.profile.id,
+      );
+      setState(() {
+        _activeAdminCode = code;
+        _generatingCode = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _generatingCode = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${S.of(context).error}: $e')),
+      );
     }
   }
 
@@ -183,119 +235,6 @@ class _AdminScreenState extends State<AdminScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
-  }
-
-  Future<void> _addUser() async {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || _selectedGroup == null) return;
-
-    setState(() {
-      _isAdding = true;
-      _addError = null;
-    });
-
-    try {
-      final user = await _profileRepo.getUserByEmail(email);
-      if (!mounted) return;
-
-      if (user == null) {
-        // New user — add to allowlist WITH group so they auto-join on first login
-        await _profileRepo.addToAllowlist(
-          email,
-          widget.profile.id,
-          groupId: _selectedGroup!.id,
-        );
-        _emailCtrl.clear();
-        setState(() {
-          _addError = null;
-          _isAdding = false;
-        });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$email тіркелді ✅ Жүйеге кіргенде "${_selectedGroup!.name}" тобына автоматты қосылады.',
-            ),
-            backgroundColor: const Color(0xFF0EA5E9),
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        return;
-      }
-
-      // User already has a profile
-      if (user.currentGroupId == _selectedGroup!.id) {
-        setState(() {
-          _addError = '${user.displayName} бұл топта бар';
-          _isAdding = false;
-        });
-        return;
-      }
-
-      if (user.currentGroupId != null) {
-        // Already in another group — inform admin, don't auto-move
-        setState(() {
-          _addError =
-              '${user.displayName} жүйеде тіркелген (бұрынғы топта бар). Оны жаңа топқа ауыстыру үшін алдымен бұрынғы топтан шығарыңыз.';
-          _isAdding = false;
-        });
-        return;
-      }
-
-      await _profileRepo.updateCurrentGroup(user.id, _selectedGroup!.id);
-      // Set created_by_admin_id if not already set (preserves original ownership)
-      if (user.createdByAdminId == null) {
-        await _profileRepo.setCreatedByAdmin(user.id, widget.profile.id);
-      }
-
-      // Verify the update actually worked
-      final updated = await _profileRepo.getUserByEmail(email);
-      if (!mounted) return;
-      if (updated?.currentGroupId != _selectedGroup!.id) {
-        setState(() {
-          _addError = S.of(context).updateFailed;
-          _isAdding = false;
-        });
-        return;
-      }
-
-      _emailCtrl.clear();
-      // Optimistically add member to local state immediately
-      if (widget.profile.isAdmin) {
-        final groupId = _selectedGroup!.id;
-        final currentMembers = List<IbadatProfile>.from(_groupMembers[groupId] ?? []);
-        if (!currentMembers.any((m) => m.id == updated!.id)) {
-          currentMembers.add(updated!);
-        }
-        setState(() {
-          _groupMembers = {..._groupMembers, groupId: currentMembers};
-          _addError = null;
-          _isAdding = false;
-        });
-      } else {
-        setState(() {
-          if (!_members.any((m) => m.id == updated!.id)) {
-            _members = [..._members, updated!];
-          }
-          _addError = null;
-          _isAdding = false;
-        });
-      }
-      await _loadData();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${user.displayName} топқа қосылды ✅'),
-          backgroundColor: const Color(0xFF059669),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _addError = '${S.of(context).error}: $e';
-        _isAdding = false;
-      });
     }
   }
 
@@ -443,6 +382,12 @@ class _AdminScreenState extends State<AdminScreen> {
           createdBy: widget.profile.id,
         );
       }
+      // Auto-generate a USER invite code for the new group
+      await _codeRepo.generateUserCode(
+        groupId: group.id,
+        createdBy: widget.profile.id,
+      );
+
       _newGroupCtrl.clear();
       setState(() {
         _newGroupPeriodStart = null;
@@ -583,6 +528,10 @@ class _AdminScreenState extends State<AdminScreen> {
 
   List<Widget> _buildSuperAdminContent() {
     return [
+      // ── Invite code for new admins ──
+      _buildInviteCodeCard(isAdmin: true),
+      const SizedBox(height: 16),
+
       // ── My admins section ──
       _buildMyAdminsCard(),
       const SizedBox(height: 16),
@@ -1042,10 +991,9 @@ class _AdminScreenState extends State<AdminScreen> {
       // Group card with collapsible members
       _buildGroupCard(widget.group, _members, isSuperAdminView: false),
 
-
       _buildPeriodsCard(widget.group.id, _periods),
       const SizedBox(height: 16),
-      _buildAddUserCard(),
+      _buildInviteCodeCard(isAdmin: false),
       const SizedBox(height: 16),
       _buildCreateGroupCard(),
       const SizedBox(height: 16),
@@ -1053,6 +1001,160 @@ class _AdminScreenState extends State<AdminScreen> {
       const SizedBox(height: 16),
       _buildLogoutButton(),
     ];
+  }
+
+  // ── INVITE CODE CARD ───────────────────────────────────────────────────────
+
+  Widget _buildInviteCodeCard({required bool isAdmin}) {
+    final s = S.of(context);
+    final activeCode = isAdmin ? _activeAdminCode : _activeUserCode;
+    final expiresAt = activeCode?.expiresAt;
+    final expiresLabel = expiresAt != null
+        ? '${expiresAt.day.toString().padLeft(2, '0')}.${expiresAt.month.toString().padLeft(2, '0')} ${expiresAt.hour.toString().padLeft(2, '0')}:${expiresAt.minute.toString().padLeft(2, '0')}'
+        : '';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.25)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🔑', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Text(
+                isAdmin ? s.generateAdminCode : s.generateUserCode,
+                style: const TextStyle(
+                    color: Color(0xFFA5B4FC),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Active code display
+          if (activeCode != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    activeCode.code,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${s.codeExpiresIn}: $expiresLabel',
+                    style: const TextStyle(
+                        color: Color(0xFF64748B), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: activeCode.code));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(s.codeCopied)),
+                      );
+                    },
+                    icon: const Icon(Icons.copy, size: 15),
+                    label: Text(s.codeLabel,
+                        style: const TextStyle(fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFA5B4FC),
+                      side: const BorderSide(
+                          color: Color(0xFF6366F1), width: 1),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _generatingCode
+                        ? null
+                        : (isAdmin ? _generateAdminCode : _generateUserCode),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4F46E5),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _generatingCode
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('↻',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Text(s.noActiveCode,
+                style: const TextStyle(
+                    color: Color(0xFF64748B), fontSize: 13)),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _generatingCode
+                    ? null
+                    : (isAdmin ? _generateAdminCode : _generateUserCode),
+                icon: _generatingCode
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.add, size: 16),
+                label: Text(
+                  isAdmin ? s.generateAdminCode : s.generateUserCode,
+                  style: const TextStyle(fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4F46E5),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   // ── SHARED WIDGETS ─────────────────────────────────────────────────────────
@@ -1342,118 +1444,6 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-
-  Widget _buildAddUserCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(S.of(context).addUser,
-              style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14)),
-          const SizedBox(height: 12),
-
-          // Email
-          TextField(
-            controller: _emailCtrl,
-            keyboardType: TextInputType.emailAddress,
-            style: const TextStyle(color: Color(0xFFE2E8F0)),
-            decoration: InputDecoration(
-              hintText: 'example@gmail.com',
-              hintStyle: const TextStyle(color: Color(0xFF475569)),
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.04),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFF6366F1)),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Group dropdown
-          if (_allGroups.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<IbadatGroup>(
-                  value: _selectedGroup,
-                  isExpanded: true,
-                  dropdownColor: const Color(0xFF1E293B),
-                  style: const TextStyle(
-                      color: Color(0xFFE2E8F0), fontSize: 14),
-                  icon: const Icon(Icons.keyboard_arrow_down,
-                      color: Color(0xFF64748B)),
-                  items: _allGroups
-                      .map((g) => DropdownMenuItem(
-                          value: g, child: Text(g.name)))
-                      .toList(),
-                  onChanged: (g) => setState(() => _selectedGroup = g),
-                ),
-              ),
-            ),
-
-          if (_addError != null) ...[
-            const SizedBox(height: 8),
-            Text(_addError!,
-                style: const TextStyle(
-                    color: Color(0xFFEF4444), fontSize: 12)),
-          ],
-          const SizedBox(height: 12),
-
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isAdding ? null : _addUser,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4F46E5),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                elevation: 0,
-              ),
-              child: _isAdding
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : Text(S.of(context).add,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildCentralPeriodsCard() {
     final periods = _selectedGroup != null

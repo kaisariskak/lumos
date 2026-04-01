@@ -47,6 +47,7 @@ class AppStrings {
   final String tabList;
   final String tabReport;
   final String tabAdmin;
+  final String tabCodes;
   final String tabProfile;
   final String tabPayments;
   final String allGroups;
@@ -156,6 +157,19 @@ class AppStrings {
   final String waitingForGroup;
   final String waitingDesc;
 
+  // ── Invite Code ────────────────────────────────────────
+  final String inviteCodeTitle;
+  final String inviteCodeSubtitle;
+  final String inviteCodeCheck;
+  final String inviteCodeNotFound;
+  final String inviteCodeExpired;
+  final String inviteCodeUsed;
+  final String generateAdminCode;
+  final String generateUserCode;
+  final String activeCode;
+  final String noActiveCode;
+  final String codeExpiresIn;
+
   // ── Home (extra) ───────────────────────────────────────
   final String greeting;
   final String switchGroupShort;
@@ -215,6 +229,7 @@ class AppStrings {
     required this.tabList,
     required this.tabReport,
     required this.tabAdmin,
+    required this.tabCodes,
     required this.tabProfile,
     required this.tabPayments,
     required this.allGroups,
@@ -311,6 +326,17 @@ class AppStrings {
     required this.reportSaving,
     required this.waitingForGroup,
     required this.waitingDesc,
+    required this.inviteCodeTitle,
+    required this.inviteCodeSubtitle,
+    required this.inviteCodeCheck,
+    required this.inviteCodeNotFound,
+    required this.inviteCodeExpired,
+    required this.inviteCodeUsed,
+    required this.generateAdminCode,
+    required this.generateUserCode,
+    required this.activeCode,
+    required this.noActiveCode,
+    required this.codeExpiresIn,
     required this.greeting,
     required this.switchGroupShort,
     required this.noPeriodSelected,
@@ -374,6 +400,7 @@ const _kk = AppStrings(
   tabList: 'Тізім',
   tabReport: 'Есебім',
   tabAdmin: 'Админ',
+  tabCodes: 'Кодтар',
   tabProfile: 'Профиль',
   tabPayments: 'Төлем',
   allGroups: 'Барлық топтар',
@@ -476,6 +503,17 @@ const _kk = AppStrings(
 
   waitingForGroup: 'Топқа қосылуды күтіңіз',
   waitingDesc: 'Администратор сізді топқа қосады',
+  inviteCodeTitle: 'Кіру коды',
+  inviteCodeSubtitle: 'Администратордан алған кодыңызды енгізіңіз',
+  inviteCodeCheck: 'Тексеру',
+  inviteCodeNotFound: 'Код табылмады немесе мерзімі өтті. Администраторға хабарласыңыз.',
+  inviteCodeExpired: 'Кодтың мерзімі өтті. Жаңа код сұраңыз.',
+  inviteCodeUsed: 'Бұл код бұрын қолданылған. Жаңа код сұраңыз.',
+  generateAdminCode: 'Admin коды жасау (7 күн)',
+  generateUserCode: 'Қатысушы коды жасау (24 сағат)',
+  activeCode: 'Белсенді код',
+  noActiveCode: 'Белсенді код жоқ',
+  codeExpiresIn: 'Дейін жарамды',
   greeting: 'Сәлем,',
   switchGroupShort: 'ауыстыру',
   noPeriodSelected: 'Кезең таңдалмаған',
@@ -538,6 +576,7 @@ const _ru = AppStrings(
   tabList: 'Список',
   tabReport: 'Отчёт',
   tabAdmin: 'Админ',
+  tabCodes: 'Коды',
   tabProfile: 'Профиль',
   tabPayments: 'Платежи',
   allGroups: 'Все группы',
@@ -640,6 +679,17 @@ const _ru = AppStrings(
 
   waitingForGroup: 'Ожидайте добавления в группу',
   waitingDesc: 'Администратор добавит вас в группу',
+  inviteCodeTitle: 'Код доступа',
+  inviteCodeSubtitle: 'Введите код, полученный от администратора',
+  inviteCodeCheck: 'Проверить',
+  inviteCodeNotFound: 'Код не найден или истёк. Обратитесь к администратору.',
+  inviteCodeExpired: 'Срок действия кода истёк. Запросите новый.',
+  inviteCodeUsed: 'Этот код уже использован. Запросите новый.',
+  generateAdminCode: 'Создать код для Admin (7 дней)',
+  generateUserCode: 'Создать код для участника (24 часа)',
+  activeCode: 'Активный код',
+  noActiveCode: 'Активных кодов нет',
+  codeExpiresIn: 'Действует до',
   greeting: 'Привет,',
   switchGroupShort: 'изменить',
   noPeriodSelected: 'Период не выбран',

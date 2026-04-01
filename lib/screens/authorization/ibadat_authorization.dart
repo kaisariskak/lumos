@@ -20,7 +20,10 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     try {
       final googleSignIn = GoogleSignIn(serverClientId: AppConfig.googleWebClientId);
       await googleSignIn.signOut();
-      final googleUser = await googleSignIn.signIn();
+      final googleUser = await googleSignIn.signIn().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => null,
+      );
       if (googleUser == null) return;
       final googleAuth = await googleUser.authentication;
       final idToken = googleAuth.idToken;
