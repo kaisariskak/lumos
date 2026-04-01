@@ -10,6 +10,7 @@ import 'home/home_screen.dart';
 import 'payments/payments_screen.dart';
 import 'profile/profile_screen.dart';
 import 'report/report_editor_screen.dart';
+import 'super_admin/super_admin_codes_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   final IbadatProfile profile;
@@ -80,6 +81,14 @@ class _MainScaffoldState extends State<MainScaffold>
 
   @override
   Widget build(BuildContext context) {
+    // Super-admin sees only the codes screen — no groups, no tabs
+    if (widget.profile.isSuperAdmin) {
+      return SuperAdminCodesScreen(
+        profile: widget.profile,
+        onLogout: _logout,
+      );
+    }
+
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFF0F172A),

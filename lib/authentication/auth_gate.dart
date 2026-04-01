@@ -5,9 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
+import '../models/invite_code.dart';
+import '../repositories/invite_code_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
+import '../screens/invite_code/invite_code_screen.dart';
 import '../screens/main_scaffold.dart';
 
 class AuthGate extends StatefulWidget {
@@ -24,8 +27,8 @@ class _AuthGateState extends State<AuthGate> {
   bool _biometricPassed = false;
   bool _checkingBiometric = true;
   bool _showGroupPicker = false;
+  bool _showInviteCode = false;
   bool _profileError = false;
-  bool _notAllowed = false;
 
   IbadatProfile? _profile;
 
@@ -37,7 +40,6 @@ class _AuthGateState extends State<AuthGate> {
         Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       if (data.event == AuthChangeEvent.signedIn) {
-        // After Google Sign-In skip biometric — go straight in
         setState(() {
           _biometricPassed = true;
           _checkingBiometric = false;
@@ -49,6 +51,7 @@ class _AuthGateState extends State<AuthGate> {
           _checkingBiometric = false;
           _profile = null;
           _showGroupPicker = false;
+          _showInviteCode = false;
         });
       }
     });
@@ -62,7 +65,6 @@ class _AuthGateState extends State<AuthGate> {
       setState(() => _checkingBiometric = false);
       return;
     }
-    // Session exists → biometric check
     await _authenticate();
     if (_biometricPassed) await _loadProfile();
   }
@@ -106,56 +108,124 @@ class _AuthGateState extends State<AuthGate> {
     try {
       final repo = ProfileRepository(Supabase.instance.client);
       IbadatProfile? profile = await repo.getProfile(user.id);
-
       final email = user.email ?? '';
 
       if (profile == null) {
-        // Profile not yet created — check allowlist
+        // Check legacy allowlist first (backward compat for existing users)
         final allowlistEntry = await repo.getAllowlistEntry(email);
-        if (allowlistEntry == null) {
+        if (allowlistEntry != null) {
+          final targetRole = allowlistEntry['target_role'] as String? ?? 'user';
+          final createdBy = allowlistEntry['created_by'] as String?;
+          final groupId = allowlistEntry['group_id'] as String?;
+
+          profile = await repo.createProfile(
+            id: user.id,
+            displayName: user.userMetadata?['full_name'] as String? ??
+                user.userMetadata?['name'] as String? ??
+                email,
+            email: email,
+            avatarUrl: user.userMetadata?['avatar_url'] as String?,
+            role: targetRole,
+            superAdminId: targetRole == 'admin' ? createdBy : null,
+            createdByAdminId: targetRole == 'user' ? createdBy : null,
+          );
+
+          if (groupId != null) {
+            await repo.updateCurrentGroup(profile.id, groupId);
+            profile = await repo.getProfile(user.id) ?? profile;
+          }
+        } else {
+          // No allowlist entry → show invite code screen
           if (!mounted) return;
-          setState(() => _notAllowed = true);
+          setState(() => _showInviteCode = true);
           return;
         }
-
-        final targetRole = allowlistEntry['target_role'] as String? ?? 'user';
-        final createdBy = allowlistEntry['created_by'] as String?;
-        final groupId = allowlistEntry['group_id'] as String?;
-
-        // For admin target_role: super_admin_id = createdBy; for users: created_by_admin_id = createdBy
-        profile = await repo.createProfile(
-          id: user.id,
-          displayName: user.userMetadata?['full_name'] as String? ??
-              user.userMetadata?['name'] as String? ??
-              email,
-          email: email,
-          avatarUrl: user.userMetadata?['avatar_url'] as String?,
-          role: targetRole,
-          superAdminId: targetRole == 'admin' ? createdBy : null,
-          createdByAdminId: targetRole == 'user' ? createdBy : null,
-        );
-
-        // Auto-assign group from allowlist
-        if (groupId != null) {
-          await repo.updateCurrentGroup(profile.id, groupId);
-          profile = await repo.getProfile(user.id) ?? profile;
-        }
       } else if (profile.currentGroupId == null && profile.role == 'user') {
-        // Existing profile with no group — auto-assign from allowlist if available
+        // Profile exists but no group → try legacy allowlist first
         final groupId = await repo.getAllowlistGroupId(email);
         if (groupId != null) {
           await repo.updateCurrentGroup(profile.id, groupId);
           profile = await repo.getProfile(user.id) ?? profile;
+        } else {
+          // No allowlist group → show invite code screen to assign group
+          if (!mounted) return;
+          setState(() {
+            _profile = profile;
+            _showInviteCode = true;
+          });
+          return;
         }
       }
 
       if (!mounted) return;
+      // Super-admin never needs a group — go straight to MainScaffold
+      final isSuperAdmin = profile.isSuperAdmin;
       setState(() {
         _profile = profile;
-        _showGroupPicker = profile?.currentGroupId == null && (profile?.isAdmin ?? false);
+        _showGroupPicker = !isSuperAdmin &&
+            profile?.currentGroupId == null &&
+            (profile?.isAdmin ?? false);
+        _showInviteCode = false;
       });
     } catch (e) {
       debugPrint('Profile load error: $e');
+      if (!mounted) return;
+      setState(() => _profileError = true);
+    }
+  }
+
+  /// Called by InviteCodeScreen when the user enters a valid code.
+  Future<void> _activateCode(InviteCode code) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final profileRepo = ProfileRepository(Supabase.instance.client);
+      final codeRepo = InviteCodeRepository(Supabase.instance.client);
+      final email = user.email ?? '';
+
+      if (_profile == null) {
+        // New user — create profile based on code role
+        if (code.roleType == 'ADMIN') {
+          await profileRepo.createProfile(
+            id: user.id,
+            displayName: user.userMetadata?['full_name'] as String? ??
+                user.userMetadata?['name'] as String? ??
+                email,
+            email: email,
+            avatarUrl: user.userMetadata?['avatar_url'] as String?,
+            role: 'admin',
+            superAdminId: code.createdBy,
+          );
+        } else {
+          final profile = await profileRepo.createProfile(
+            id: user.id,
+            displayName: user.userMetadata?['full_name'] as String? ??
+                user.userMetadata?['name'] as String? ??
+                email,
+            email: email,
+            avatarUrl: user.userMetadata?['avatar_url'] as String?,
+            role: 'user',
+            createdByAdminId: code.createdBy,
+          );
+          if (code.groupId != null) {
+            await profileRepo.updateCurrentGroup(profile.id, code.groupId);
+          }
+        }
+      } else {
+        // Profile exists but no group — assign group from USER code
+        if (code.roleType == 'USER' && code.groupId != null) {
+          await profileRepo.updateCurrentGroup(_profile!.id, code.groupId);
+        }
+      }
+
+      // Mark code as used
+      await codeRepo.markUsed(code.id);
+
+      // Reload profile to enter the app
+      await _loadProfile();
+    } catch (e) {
+      debugPrint('Code activation error: $e');
       if (!mounted) return;
       setState(() => _profileError = true);
     }
@@ -233,52 +303,6 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
-    // Not in allowlist
-    if (_notAllowed) {
-      final s = S.of(context);
-      return Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('🚫', style: TextStyle(fontSize: 64)),
-                const SizedBox(height: 20),
-                Text(
-                  s.accessDenied,
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  s.notAllowedDesc,
-                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-                TextButton(
-                  onPressed: () {
-                    setState(() => _notAllowed = false);
-                    _logout();
-                  },
-                  child: Text(
-                    s.logout,
-                    style: const TextStyle(color: Color(0xFF64748B)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     // Profile load error
     if (_profileError) {
       final s = S.of(context);
@@ -319,6 +343,14 @@ class _AuthGateState extends State<AuthGate> {
       );
     }
 
+    // Invite code screen (new user or existing user with no group)
+    if (_showInviteCode) {
+      return InviteCodeScreen(
+        onCodeValidated: _activateCode,
+        onLogout: _logout,
+      );
+    }
+
     // Profile still loading
     if (_profile == null) {
       return const Scaffold(
@@ -327,11 +359,6 @@ class _AuthGateState extends State<AuthGate> {
           child: CircularProgressIndicator(color: Color(0xFF6366F1)),
         ),
       );
-    }
-
-    // Regular user with no group — wait for admin to assign
-    if (_profile!.currentGroupId == null && !_profile!.isAdmin) {
-      return _WaitingForGroupScreen(onLogout: _logout);
     }
 
     // Admin with no group → pick a group
@@ -352,54 +379,6 @@ class _AuthGateState extends State<AuthGate> {
     return MainScaffold(
       profile: _profile!,
       onSwitchGroup: () => setState(() => _showGroupPicker = true),
-    );
-  }
-}
-
-class _WaitingForGroupScreen extends StatelessWidget {
-  final VoidCallback onLogout;
-  const _WaitingForGroupScreen({required this.onLogout});
-
-  @override
-  Widget build(BuildContext context) {
-    final s = S.of(context);
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('⏳', style: TextStyle(fontSize: 64)),
-              const SizedBox(height: 20),
-              Text(
-                s.waitingForGroup,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                s.waitingDesc,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 40),
-              TextButton(
-                onPressed: onLogout,
-                child: Text(
-                  s.logout,
-                  style: const TextStyle(color: Color(0xFF64748B)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
