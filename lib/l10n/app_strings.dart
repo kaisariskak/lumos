@@ -58,6 +58,7 @@ class AppStrings {
   // ── Profile ────────────────────────────────────────────
   final String groupLabel;
   final String language;
+  final String colorTheme;
   final String kazakh;
   final String russian;
 
@@ -238,6 +239,7 @@ class AppStrings {
     required this.logout,
     required this.groupLabel,
     required this.language,
+    required this.colorTheme,
     required this.kazakh,
     required this.russian,
     required this.adminTitle,
@@ -410,6 +412,7 @@ const _kk = AppStrings(
 
   groupLabel: 'Топ',
   language: 'Тіл',
+  colorTheme: 'Түс тақырыбы',
   kazakh: 'Қазақша',
   russian: 'Русский',
 
@@ -586,6 +589,7 @@ const _ru = AppStrings(
 
   groupLabel: 'Группа',
   language: 'Язык',
+  colorTheme: 'Цвет темы',
   kazakh: 'Қазақша',
   russian: 'Русский',
 

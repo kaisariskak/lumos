@@ -9,6 +9,7 @@ import '../../models/ibadat_payment.dart';
 import '../../models/ibadat_profile.dart';
 import '../../repositories/member_settings_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../theme/accent_provider.dart';
 import 'add_payment_dialog.dart';
 
 class MemberPaymentsScreen extends StatefulWidget {
@@ -90,9 +91,9 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
           decoration: InputDecoration(
             hintText: s.fixedAmountHint,
             hintStyle: const TextStyle(color: Color(0xFF475569)),
-            suffix: const Text('₸',
+            suffix: Text('₸',
                 style: TextStyle(
-                    color: Color(0xFF10B981),
+                    color: AccentProvider.instance.current.accent,
                     fontWeight: FontWeight.w700)),
             filled: true,
             fillColor: Colors.white.withValues(alpha: 0.04),
@@ -108,7 +109,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF10B981)),
+              borderSide: BorderSide(color: AccentProvider.instance.current.accent),
             ),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -126,7 +127,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
               Navigator.pop(context, v);
             },
             child: Text(s.save,
-                style: const TextStyle(color: Color(0xFF10B981))),
+                style: TextStyle(color: AccentProvider.instance.current.accent)),
           ),
         ],
       ),
@@ -317,8 +318,11 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF065F46), Color(0xFF064E3B)],
+                    gradient: LinearGradient(
+                      colors: [
+                        AccentProvider.instance.current.accentDark.withValues(alpha: 0.8),
+                        AccentProvider.instance.current.accentDark,
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -365,9 +369,9 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
               // Payments list
               Expanded(
                 child: _isLoading
-                    ? const Center(
+                    ? Center(
                         child: CircularProgressIndicator(
-                            color: Color(0xFF10B981)))
+                            color: AccentProvider.instance.current.accent))
                     : _payments.isEmpty
                         ? Center(
                             child: Column(
@@ -389,7 +393,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                                   label: Text(S.of(context).addPayment),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor:
-                                        const Color(0xFF10B981),
+                                        AccentProvider.instance.current.accent,
                                     foregroundColor: Colors.white,
                                     elevation: 0,
                                     shape: RoundedRectangleBorder(
@@ -405,6 +409,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                             itemCount: _payments.length,
                             itemBuilder: (_, i) => _PaymentTile(
                               payment: _payments[i],
+                              fixedMonthlyAmount: _fixedMonthlyAmount,
                               onEdit: () => _addOrEdit(_payments[i]),
                               onDelete: () => _delete(_payments[i]),
                             ),
@@ -417,7 +422,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
       floatingActionButton: _payments.isNotEmpty
           ? FloatingActionButton(
               onPressed: () => _addOrEdit(),
-              backgroundColor: const Color(0xFF10B981),
+              backgroundColor: AccentProvider.instance.current.accent,
               child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
@@ -456,15 +461,15 @@ class _StatItem extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
               child: Text(unit,
-                  style: const TextStyle(
-                      color: Color(0xFF6EE7B7), fontSize: 11)),
+                  style: TextStyle(
+                      color: AccentProvider.instance.current.accentLight, fontSize: 11)),
             ),
           ],
         ),
         const SizedBox(height: 2),
         Text(label,
-            style: const TextStyle(
-                color: Color(0xFF6EE7B7), fontSize: 10)),
+            style: TextStyle(
+                color: AccentProvider.instance.current.accentLight, fontSize: 10)),
       ],
     );
   }
@@ -472,14 +477,32 @@ class _StatItem extends StatelessWidget {
 
 class _PaymentTile extends StatelessWidget {
   final IbadatPayment payment;
+  final double fixedMonthlyAmount;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _PaymentTile({
     required this.payment,
+    required this.fixedMonthlyAmount,
     required this.onEdit,
     required this.onDelete,
   });
+
+  bool _isPaid() {
+    final date = payment.paymentDate;
+    final now = DateTime.now();
+    final isCurrentMonth = date != null &&
+        date.year == now.year &&
+        date.month == now.month;
+
+    // Текущий месяц + фиксированная сумма → автоматический расчёт
+    if (isCurrentMonth && fixedMonthlyAmount > 0) {
+      return payment.amount >= fixedMonthlyAmount;
+    }
+
+    // Прошлые месяцы → ручной статус финансиста
+    return payment.paidMonth;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,6 +510,7 @@ class _PaymentTile extends StatelessWidget {
     final dateStr = date != null
         ? '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}'
         : '—';
+    final isPaid = _isPaid();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -503,16 +527,16 @@ class _PaymentTile extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: payment.paidMonth
-                  ? const Color(0xFF10B981).withValues(alpha: 0.12)
+              color: isPaid
+                  ? AccentProvider.instance.current.accent.withValues(alpha: 0.12)
                   : const Color(0xFFEF4444).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
               child: Icon(
-                payment.paidMonth ? Icons.check_circle : Icons.schedule,
-                color: payment.paidMonth
-                    ? const Color(0xFF10B981)
+                isPaid ? Icons.check_circle : Icons.schedule,
+                color: isPaid
+                    ? AccentProvider.instance.current.accent
                     : const Color(0xFFEF4444),
                 size: 20,
               ),
@@ -540,7 +564,7 @@ class _PaymentTile extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: payment.paidExtra
                             ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-                            : const Color(0xFF10B981).withValues(alpha: 0.1),
+                            : AccentProvider.instance.current.accent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -548,7 +572,7 @@ class _PaymentTile extends StatelessWidget {
                         style: TextStyle(
                           color: payment.paidExtra
                               ? const Color(0xFFA5B4FC)
-                              : const Color(0xFF6EE7B7),
+                              : AccentProvider.instance.current.accentLight,
                           fontSize: 9,
                           fontWeight: FontWeight.w600,
                         ),
@@ -570,16 +594,16 @@ class _PaymentTile extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 1),
                       decoration: BoxDecoration(
-                        color: payment.paidMonth
-                            ? const Color(0xFF10B981).withValues(alpha: 0.1)
+                        color: isPaid
+                            ? AccentProvider.instance.current.accent.withValues(alpha: 0.1)
                             : const Color(0xFFEF4444).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        payment.paidMonth ? S.of(context).paidStatus : S.of(context).unpaidStatus,
+                        isPaid ? S.of(context).paidStatus : S.of(context).unpaidStatus,
                         style: TextStyle(
-                          color: payment.paidMonth
-                              ? const Color(0xFF10B981)
+                          color: isPaid
+                              ? AccentProvider.instance.current.accent
                               : const Color(0xFFEF4444),
                           fontSize: 9,
                           fontWeight: FontWeight.w600,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_strings.dart';
 
 import '../../models/ibadat_category.dart';
+import '../../theme/accent_provider.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
 import '../../widgets/ring_indicator.dart';
@@ -44,12 +45,12 @@ class DetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
-            stops: [0.0, 0.5, 1.0],
+            colors: [const Color(0xFF0F172A), AccentProvider.instance.current.gradientMid, const Color(0xFF0F172A)],
+            stops: const [0.0, 0.5, 1.0],
           ),
         ),
         child: SafeArea(
@@ -98,15 +99,15 @@ class DetailScreen extends StatelessWidget {
                         width: 72,
                         height: 72,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                          gradient: LinearGradient(
+                            colors: [AccentProvider.instance.current.accentDark, AccentProvider.instance.current.accent],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(36),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
-                              color: Color(0x664F46E5),
+                              color: AccentProvider.instance.current.accentDark.withValues(alpha: 0.4),
                               blurRadius: 32,
                               offset: Offset(0, 8),
                             ),
@@ -145,14 +146,10 @@ class DetailScreen extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 5),
                         decoration: BoxDecoration(
-                          color: isWeekMode
-                              ? const Color(0xFF6366F1).withValues(alpha: 0.1)
-                              : const Color(0xFF0EA5E9).withValues(alpha: 0.1),
+                          color: AccentProvider.instance.current.accent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: isWeekMode
-                                ? const Color(0xFF6366F1).withValues(alpha: 0.2)
-                                : const Color(0xFF0EA5E9).withValues(alpha: 0.2),
+                            color: AccentProvider.instance.current.accent.withValues(alpha: 0.2),
                           ),
                         ),
                         child: Row(
@@ -164,9 +161,7 @@ class DetailScreen extends StatelessWidget {
                             Text(
                               weekLabel,
                               style: TextStyle(
-                                color: isWeekMode
-                                    ? const Color(0xFFA5B4FC)
-                                    : const Color(0xFF7DD3FC),
+                                color: AccentProvider.instance.current.accentLight,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),

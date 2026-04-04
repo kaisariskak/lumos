@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_strings.dart';
 import '../models/ibadat_group.dart';
+import '../theme/accent_provider.dart';
 import '../models/ibadat_profile.dart';
 import '../repositories/ibadat_group_repository.dart';
 import 'admin/admin_screen.dart';
@@ -15,11 +16,13 @@ import 'super_admin/super_admin_codes_screen.dart';
 class MainScaffold extends StatefulWidget {
   final IbadatProfile profile;
   final VoidCallback onSwitchGroup;
+  final VoidCallback onReloadProfile;
 
   const MainScaffold({
     super.key,
     required this.profile,
     required this.onSwitchGroup,
+    required this.onReloadProfile,
   });
 
   @override
@@ -38,6 +41,14 @@ class _MainScaffoldState extends State<MainScaffold>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadGroup();
+  }
+
+  @override
+  void didUpdateWidget(MainScaffold oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.currentGroupId != widget.profile.currentGroupId) {
+      _loadGroup();
+    }
   }
 
   @override
@@ -90,10 +101,11 @@ class _MainScaffoldState extends State<MainScaffold>
     }
 
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0F172A),
+      return Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+          child: CircularProgressIndicator(
+              color: AccentProvider.instance.current.accent),
         ),
       );
     }
@@ -105,31 +117,43 @@ class _MainScaffoldState extends State<MainScaffold>
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
-            stops: [0.0, 0.5, 1.0],
+            colors: [
+              const Color(0xFF0F172A),
+              AccentProvider.instance.current.gradientMid,
+              const Color(0xFF0F172A),
+            ],
+            stops: const [0.0, 0.5, 1.0],
           ),
         ),
-        child: group == null
+        child: group == null && !isAdmin
             ? _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup)
             : IndexedStack(
                 index: _tabIndex,
                 children: [
-                  HomeScreen(
-                    key: _homeKey,
-                    profile: widget.profile,
-                    group: group,
-                    onSwitchGroup: widget.onSwitchGroup,
-                  ),
-                  ReportEditorScreen(
-                    profile: widget.profile,
-                    group: group,
-                    onSaved: () => _homeKey.currentState?.reload(),
-                    onBack: () => setState(() => _tabIndex = 0),
-                  ),
+                  group != null
+                      ? HomeScreen(
+                          key: _homeKey,
+                          profile: widget.profile,
+                          group: group,
+                          onSwitchGroup: widget.onSwitchGroup,
+                        )
+                      : isAdmin
+                          ? const _AdminNoGroupHint()
+                          : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
+                  group != null
+                      ? ReportEditorScreen(
+                          profile: widget.profile,
+                          group: group,
+                          onSaved: () => _homeKey.currentState?.reload(),
+                          onBack: () => setState(() => _tabIndex = 0),
+                        )
+                      : isAdmin
+                          ? const _AdminNoGroupHint()
+                          : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
                   if (isFinancier)
                     PaymentsScreen(
                       profile: widget.profile,
@@ -141,31 +165,54 @@ class _MainScaffoldState extends State<MainScaffold>
                       group: group,
                       onSwitchGroup: widget.onSwitchGroup,
                       onLogout: _logout,
-                      onGroupChanged: _loadGroup,
+                      onGroupChanged: group == null
+                          ? widget.onReloadProfile
+                          : _loadGroup,
                     )
                   else
                     ProfileScreen(
                       profile: widget.profile,
-                      group: group,
+                      group: group!,
                       onSwitchGroup: widget.onSwitchGroup,
                       onLogout: _logout,
                     ),
                 ],
               ),
       ),
-      bottomNavigationBar: group == null
+      bottomNavigationBar: group == null && !isAdmin
           ? null
           : _BottomNav(
               currentIndex: _tabIndex,
               isAdmin: isAdmin,
               isFinancier: isFinancier,
-              groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : group.name,
+              groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
                 setState(() => _tabIndex = i);
-                if (i == 0) _homeKey.currentState?.reload();
                 _loadGroup();
               },
             ),
+    );
+  }
+}
+
+class _AdminNoGroupHint extends StatelessWidget {
+  const _AdminNoGroupHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('👑', style: TextStyle(fontSize: 48)),
+          SizedBox(height: 16),
+          Text(
+            'Создайте группу во вкладке Админ',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -253,10 +300,12 @@ class _BottomNav extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  color: AccentProvider.instance.current.accent
+                      .withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+                      color: AccentProvider.instance.current.accent
+                          .withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -265,8 +314,8 @@ class _BottomNav extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       groupName,
-                      style: const TextStyle(
-                        color: Color(0xFFA5B4FC),
+                      style: TextStyle(
+                        color: AccentProvider.instance.current.accentLight,
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
@@ -298,7 +347,7 @@ class _BottomNav extends StatelessWidget {
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: isActive
-                                  ? const Color(0xFFA5B4FC)
+                                  ? AccentProvider.instance.current.accentLight
                                   : const Color(0xFF475569),
                             ),
                           ),
@@ -308,7 +357,7 @@ class _BottomNav extends StatelessWidget {
                             width: isActive ? 4 : 0,
                             height: isActive ? 4 : 0,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1),
+                              color: AccentProvider.instance.current.accent,
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),

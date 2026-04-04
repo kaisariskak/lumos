@@ -9,6 +9,7 @@ import '../../models/ibadat_report.dart';
 import '../../models/ibadat_period.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
+import '../../theme/accent_provider.dart';
 import '../../utils/week_utils.dart';
 
 class ReportEditorScreen extends StatefulWidget {
@@ -27,6 +28,35 @@ class ReportEditorScreen extends StatefulWidget {
 
   @override
   State<ReportEditorScreen> createState() => _ReportEditorScreenState();
+}
+
+class _CounterBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _CounterBtn({required this.icon, required this.color, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: enabled ? color.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: enabled ? color.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.06),
+          ),
+        ),
+        child: Icon(icon, color: enabled ? color : const Color(0xFF475569), size: 20),
+      ),
+    );
+  }
 }
 
 class _ReportEditorScreenState extends State<ReportEditorScreen> {
@@ -107,12 +137,12 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
-            stops: [0.0, 0.5, 1.0],
+            colors: [const Color(0xFF0F172A), AccentProvider.instance.current.gradientMid, const Color(0xFF0F172A)],
+            stops: const [0.0, 0.5, 1.0],
           ),
         ),
         child: SafeArea(
@@ -158,9 +188,9 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
 
               Expanded(
                 child: _isLoading
-                    ? const Center(
+                    ? Center(
                         child: CircularProgressIndicator(
-                            color: Color(0xFF6366F1)))
+                            color: AccentProvider.instance.current.accent))
                     : SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                         child: Column(
@@ -170,10 +200,10 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                               width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
+                                gradient: LinearGradient(
                                   colors: [
-                                    Color(0xFF4F46E5),
-                                    Color(0xFF7C3AED)
+                                    AccentProvider.instance.current.accentDark,
+                                    AccentProvider.instance.current.accent,
                                   ],
                                 ),
                                 borderRadius: BorderRadius.circular(18),
@@ -332,6 +362,46 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                                       ),
                                     ),
 
+                                    // +/- counter row
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 10),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          _CounterBtn(
+                                            icon: Icons.remove,
+                                            color: cat.color,
+                                            onTap: val > 0
+                                                ? () => setState(() => _report.setValue(cat.key, val - 1))
+                                                : null,
+                                          ),
+                                          Container(
+                                            margin: const EdgeInsets.symmetric(horizontal: 18),
+                                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: cat.color.withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: Text(
+                                              '$val',
+                                              style: TextStyle(
+                                                color: cat.color,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 20,
+                                              ),
+                                            ),
+                                          ),
+                                          _CounterBtn(
+                                            icon: Icons.add,
+                                            color: cat.color,
+                                            onTap: val < cat.weekMax
+                                                ? () => setState(() => _report.setValue(cat.key, val + 1))
+                                                : null,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
                                     // Quick buttons 25/50/75/100%
                                     Row(
                                       children: [0.25, 0.5, 0.75, 1.0]
@@ -396,7 +466,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                               child: ElevatedButton(
                                 onPressed: _isSaving ? null : _save,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF4F46E5),
+                                  backgroundColor: AccentProvider.instance.current.accentDark,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 16),
@@ -405,7 +475,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                                   ),
                                   elevation: 0,
                                   shadowColor:
-                                      const Color(0xFF4F46E5),
+                                      AccentProvider.instance.current.accentDark,
                                 ),
                                 child: _isSaving
                                     ? const SizedBox(

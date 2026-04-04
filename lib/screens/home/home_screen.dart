@@ -7,7 +7,9 @@ import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
 import '../../models/ibadat_period.dart';
+import '../../models/ibadat_group_settings.dart';
 import '../../repositories/ibadat_group_repository.dart';
+import '../../repositories/ibadat_group_settings_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../utils/week_utils.dart';
@@ -35,7 +37,9 @@ class HomeScreenState extends State<HomeScreen> {
   void reload() => _loadData();
   late final IbadatGroupRepository _groupRepo;
   late final IbadatReportRepository _reportRepo;
+  late final IbadatGroupSettingsRepository _settingsRepo;
 
+  IbadatGroupSettings? _groupSettings;
   List<IbadatProfile> _members = [];
   // userId → IbadatReport for current viewed month
   Map<String, IbadatReport> _monthlyReports = {};
@@ -66,6 +70,7 @@ class HomeScreenState extends State<HomeScreen> {
     _groupRepo = IbadatGroupRepository(client);
     _reportRepo = IbadatReportRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
+    _settingsRepo = IbadatGroupSettingsRepository(client);
     _loadData();
   }
 
@@ -83,6 +88,7 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoading = true);
     try {
       final members = await _groupRepo.getGroupMembers(widget.group.id);
+      final groupSettings = await _settingsRepo.getSettings(widget.group.id);
 
       // Load periods for non-super-admin
       List<IbadatPeriod> periods = [];
@@ -139,6 +145,7 @@ class HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _members = members;
+          _groupSettings = groupSettings;
           _periods = periods;
           _isPeriodMode = isPeriodMode;
           _viewMonth = viewMonth;
@@ -164,7 +171,8 @@ class HomeScreenState extends State<HomeScreen> {
   double _scoreFromReport(IbadatReport report) {
     double sum = 0;
     for (final cat in IbadatCategory.all) {
-      sum += (report.getValue(cat.key) / cat.monthMax).clamp(0.0, 1.0);
+      final max = _groupSettings?.getMax(cat.key) ?? cat.monthMax;
+      sum += (report.getValue(cat.key) / max).clamp(0.0, 1.0);
     }
     return sum / IbadatCategory.all.length;
   }
@@ -284,52 +292,34 @@ class HomeScreenState extends State<HomeScreen> {
                     score: _groupScore(),
                   ),
 
-                  // Group badge
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(40),
-                          border: Border.all(
-                              color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text('👥',
-                                style: TextStyle(fontSize: 13)),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.group.name,
-                              style: const TextStyle(
-                                color: Color(0xFFA5B4FC),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
+                  // Group badge (tappable to switch group)
+                  GestureDetector(
+                    onTap: widget.onSwitchGroup,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(40),
+                        border: Border.all(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
                       ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: widget.onSwitchGroup,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            s.switchGroupShort,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('👥', style: TextStyle(fontSize: 13)),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.group.name,
                             style: const TextStyle(
-                                color: Color(0xFF94A3B8), fontSize: 11),
+                              color: Color(0xFFA5B4FC),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 12),
 

@@ -84,6 +84,11 @@ class ProfileRepository {
         .eq('id', adminId);
   }
 
+  /// Physically delete a profile (only when member has no payments)
+  Future<void> deleteProfile(String userId) async {
+    await _client.from('ibadat_profiles').delete().eq('id', userId);
+  }
+
   /// Set created_by_admin_id on a regular user (called when admin adds a user)
   Future<void> setCreatedByAdmin(String userId, String adminId) async {
     await _client

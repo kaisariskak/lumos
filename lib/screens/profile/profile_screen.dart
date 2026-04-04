@@ -4,8 +4,9 @@ import '../../l10n/app_strings.dart';
 import '../../l10n/locale_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
+import '../../theme/accent_provider.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final IbadatProfile profile;
   final IbadatGroup? group;
   final VoidCallback onSwitchGroup;
@@ -18,6 +19,27 @@ class ProfileScreen extends StatelessWidget {
     required this.onSwitchGroup,
     required this.onLogout,
   });
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  @override
+  void initState() {
+    super.initState();
+    AccentProvider.instance.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    AccentProvider.instance.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,8 +55,8 @@ class ProfileScreen extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+              gradient: LinearGradient(
+                colors: [AccentProvider.instance.current.accentDark, AccentProvider.instance.current.accent],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -49,7 +71,7 @@ class ProfileScreen extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                profile.displayName[0].toUpperCase(),
+                widget.profile.displayName[0].toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -60,7 +82,7 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            profile.displayName,
+            widget.profile.displayName,
             style: const TextStyle(
               color: Color(0xFFE2E8F0),
               fontSize: 22,
@@ -69,15 +91,97 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            profile.email,
+            widget.profile.email,
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
           ),
           const SizedBox(height: 8),
           Text(
-            '${s.groupLabel}: ${group?.name ?? '—'}',
+            '${s.groupLabel}: ${widget.group?.name ?? '—'}',
             style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
           ),
           const SizedBox(height: 32),
+
+          // Color theme picker
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('🎨', style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 8),
+                    Text(
+                      s.colorTheme,
+                      style: TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ValueListenableBuilder<int>(
+                  valueListenable: AccentProvider.instance,
+                  builder: (_, selected, _) => Row(
+                    children: List.generate(appAccents.length, (i) {
+                      final theme = appAccents[i];
+                      final isSelected = selected == i;
+                      return Expanded(
+                        child: GestureDetector(
+                          onTap: () => AccentProvider.instance.setAccent(i),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: EdgeInsets.only(right: i < appAccents.length - 1 ? 8 : 0),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: theme.accent.withValues(alpha: isSelected ? 0.2 : 0.07),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.accent.withValues(alpha: isSelected ? 0.7 : 0.2),
+                                width: isSelected ? 2 : 1,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: theme.accent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: isSelected
+                                      ? const Icon(Icons.check, color: Colors.white, size: 14)
+                                      : null,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  theme.name,
+                                  style: TextStyle(
+                                    color: isSelected ? theme.accentLight : const Color(0xFF64748B),
+                                    fontSize: 11,
+                                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // Language switcher
           Container(
@@ -137,7 +241,7 @@ class ProfileScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: onLogout,
+              onPressed: widget.onLogout,
               icon: const Icon(Icons.logout, size: 18),
               label: Text(s.logout),
               style: OutlinedButton.styleFrom(
@@ -177,12 +281,12 @@ class _LangBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: selected
-              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+              ? AccentProvider.instance.current.accent.withValues(alpha: 0.15)
               : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
-                ? const Color(0xFF6366F1).withValues(alpha: 0.5)
+                ? AccentProvider.instance.current.accent.withValues(alpha: 0.5)
                 : Colors.white.withValues(alpha: 0.08),
             width: selected ? 1.5 : 1,
           ),
@@ -195,7 +299,7 @@ class _LangBtn extends StatelessWidget {
               label,
               style: TextStyle(
                 color: selected
-                    ? const Color(0xFFA5B4FC)
+                    ? AccentProvider.instance.current.accentLight
                     : const Color(0xFF64748B),
                 fontSize: 12,
                 fontWeight:

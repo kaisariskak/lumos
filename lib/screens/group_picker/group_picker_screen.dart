@@ -30,7 +30,6 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
   List<IbadatGroup> _groups = [];
   bool _isLoading = true;
   bool _isSaving = false;
-  final _nameCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -39,12 +38,6 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
     _groupRepo = IbadatGroupRepository(client);
     _profileRepo = ProfileRepository(client);
     _loadGroups();
-  }
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _loadGroups() async {
@@ -68,26 +61,6 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Қосылу қатесі: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
-  }
-
-  Future<void> _createGroup() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) return;
-    setState(() => _isSaving = true);
-    try {
-      final group = await _groupRepo.createGroup(name, widget.profile.id);
-      // Update admin role then join
-      await _profileRepo.updateRole(widget.profile.id, 'admin');
-      await _profileRepo.updateCurrentGroup(widget.profile.id, group.id);
-      widget.onGroupSelected();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Топ құру қатесі: $e')),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -194,95 +167,6 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
                         const SizedBox(height: 24),
                       ],
 
-                      // Create new group
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.03),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s.createNewGroup,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFE2E8F0),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _nameCtrl,
-                              style: const TextStyle(color: Color(0xFFE2E8F0)),
-                              decoration: InputDecoration(
-                                hintText: s.groupNameHint,
-                                hintStyle: const TextStyle(color: Color(0xFF475569)),
-                                filled: true,
-                                fillColor: Colors.white.withValues(alpha: 0.04),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.1),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF6366F1),
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _isSaving ? null : _createGroup,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF059669),
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: _isSaving
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : Text(
-                                        s.create,
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
                   ),
                 ),

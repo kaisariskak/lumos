@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'authentication/auth_gate.dart';
 import 'l10n/locale_provider.dart';
+import 'theme/accent_provider.dart';
 import 'theme/theme.dart';
 
 class IbadatApp extends StatefulWidget {
@@ -18,16 +19,21 @@ class _IbadatAppState extends State<IbadatApp> {
     LocaleProvider.instance.init().then((_) {
       if (mounted) setState(() {});
     });
-    LocaleProvider.instance.addListener(_onLocaleChanged);
+    AccentProvider.instance.init().then((_) {
+      if (mounted) setState(() {});
+    });
+    LocaleProvider.instance.addListener(_rebuild);
+    AccentProvider.instance.addListener(_rebuild);
   }
 
   @override
   void dispose() {
-    LocaleProvider.instance.removeListener(_onLocaleChanged);
+    LocaleProvider.instance.removeListener(_rebuild);
+    AccentProvider.instance.removeListener(_rebuild);
     super.dispose();
   }
 
-  void _onLocaleChanged() {
+  void _rebuild() {
     if (mounted) setState(() {});
   }
 
@@ -35,7 +41,7 @@ class _IbadatAppState extends State<IbadatApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Ибадат Трекер',
-      theme: darkTheme,
+      theme: buildDarkTheme(AccentProvider.instance.current),
       locale: LocaleProvider.instance.value,
       supportedLocales: const [
         Locale('kk'),

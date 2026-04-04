@@ -47,6 +47,13 @@ class IbadatGroupRepository {
     return IbadatGroup.fromJson(data);
   }
 
+  Future<void> updateAdminId(String groupId, String newAdminId) async {
+    await _client
+        .from('ibadat_groups')
+        .update({'admin_id': newAdminId})
+        .eq('id', groupId);
+  }
+
   Future<void> updateFinancier(String groupId, String? financierId) async {
     final result = await _client
         .from('ibadat_groups')
@@ -65,11 +72,17 @@ class IbadatGroupRepository {
     await _client.from('ibadat_groups').delete().eq('id', groupId);
   }
 
-  Future<List<IbadatProfile>> getGroupMembers(String groupId) async {
-    final data = await _client
-        .from('ibadat_profiles')
-        .select()
-        .eq('current_group_id', groupId);
-    return (data as List).map((e) => IbadatProfile.fromJson(e)).toList();
+  Future<List<IbadatProfile>> getGroupMembers(String groupId, {String? adminId}) async {
+    final query = _client.from('ibadat_profiles').select();
+    final List data;
+    if (adminId != null) {
+      data = await query.or('current_group_id.eq.$groupId,id.eq.$adminId');
+    } else {
+      data = await query.eq('current_group_id', groupId);
+    }
+    final members = data.map((e) => IbadatProfile.fromJson(e)).toList();
+    // Убираем дубликаты (если admin уже есть в current_group_id)
+    final seen = <String>{};
+    return members.where((m) => seen.add(m.id)).toList();
   }
 }

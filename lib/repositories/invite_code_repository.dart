@@ -74,7 +74,6 @@ class InviteCodeRepository {
     if (data == null) throw InviteCodeNotFoundException();
 
     final invite = InviteCode.fromJson(data);
-    if (invite.isUsed) throw InviteCodeUsedException();
     if (invite.isExpired) throw InviteCodeExpiredException();
 
     return invite;

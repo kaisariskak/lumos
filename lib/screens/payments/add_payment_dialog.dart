@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../l10n/app_strings.dart';
+import '../../theme/accent_provider.dart';
 import '../../models/ibadat_payment.dart';
 import '../../models/ibadat_profile.dart';
 
@@ -59,8 +60,8 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       lastDate: DateTime(2100),
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF10B981),
+          colorScheme: ColorScheme.dark(
+            primary: AccentProvider.instance.current.accent,
             surface: Color(0xFF1E293B),
           ),
         ),
@@ -70,21 +71,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
     if (picked != null) setState(() => _paymentDate = picked);
   }
 
-  bool _computePaidMonth(double amount) {
-    // Extra payment — always paid
-    if (_paidExtra) return true;
-
-    // Monthly payment with fixed amount
-    if (widget.fixedMonthlyAmount > 0) {
-      if (amount < widget.fixedMonthlyAmount) return false;
-      // Check payment date matches current month
-      final date = _paymentDate ?? DateTime.now();
-      final now = DateTime.now();
-      return date.year == now.year && date.month == now.month;
-    }
-
-    return _paidMonth;
-  }
+  bool _computePaidMonth(double amount) => _paidMonth;
 
   void _submit() {
     final raw = _amountCtrl.text.trim();
@@ -125,7 +112,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    color: AccentProvider.instance.current.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Center(
@@ -171,9 +158,9 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
               decoration: InputDecoration(
                 hintText: '0',
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
-                suffix: const Text('₸',
+                suffix: Text('₸',
                     style: TextStyle(
-                        color: Color(0xFF10B981), fontWeight: FontWeight.w700)),
+                        color: AccentProvider.instance.current.accent, fontWeight: FontWeight.w700)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.04),
                 border: OutlineInputBorder(
@@ -188,7 +175,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF10B981)),
+                  borderSide: BorderSide(color: AccentProvider.instance.current.accent),
                 ),
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -213,8 +200,8 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_today,
-                        color: Color(0xFF10B981), size: 16),
+                    Icon(Icons.calendar_today,
+                        color: AccentProvider.instance.current.accent, size: 16),
                     const SizedBox(width: 10),
                     Text(
                       _paymentDate == null
@@ -252,8 +239,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
             // Fixed amount info
             if (widget.fixedMonthlyAmount > 0) ...[
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF6366F1).withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
@@ -275,51 +261,51 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                   ],
                 ),
               ),
-            ] else ...[
-              // Manual paid status toggle (only when no fixed amount)
-              GestureDetector(
-                onTap: () => setState(() => _paidMonth = !_paidMonth),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
+              const SizedBox(height: 8),
+            ],
+
+            // Manual paid status toggle (always visible)
+            GestureDetector(
+              onTap: () => setState(() => _paidMonth = !_paidMonth),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _paidMonth
+                      ? AccentProvider.instance.current.accent.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
                     color: _paidMonth
-                        ? const Color(0xFF10B981).withValues(alpha: 0.1)
-                        : Colors.white.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _paidMonth
-                          ? const Color(0xFF10B981).withValues(alpha: 0.3)
-                          : Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _paidMonth
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                        color: _paidMonth
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFF475569),
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        _paidMonth ? s.paidStatus : s.unpaidStatus,
-                        style: TextStyle(
-                          color: _paidMonth
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFF94A3B8),
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+                        ? AccentProvider.instance.current.accent.withValues(alpha: 0.3)
+                        : Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _paidMonth
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      color: _paidMonth
+                          ? AccentProvider.instance.current.accent
+                          : const Color(0xFF475569),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _paidMonth ? s.paidStatus : s.unpaidStatus,
+                      style: TextStyle(
+                        color: _paidMonth
+                            ? AccentProvider.instance.current.accent
+                            : const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
             const SizedBox(height: 20),
 
             // Actions
@@ -344,7 +330,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                   child: ElevatedButton(
                     onPressed: _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
+                      backgroundColor: AccentProvider.instance.current.accent,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 14),

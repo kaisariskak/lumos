@@ -9,6 +9,7 @@ import '../../models/ibadat_profile.dart';
 import '../../repositories/ibadat_group_repository.dart';
 import '../../repositories/member_settings_repository.dart';
 import '../../repositories/payment_repository.dart';
+import '../../repositories/profile_repository.dart';
 import 'member_payments_screen.dart';
 
 class PaymentsScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   late final PaymentRepository _paymentRepo;
   late final IbadatGroupRepository _groupRepo;
   late final MemberSettingsRepository _settingsRepo;
+  late final ProfileRepository _profileRepo;
 
   List<IbadatProfile> _members = [];
   Map<String, List<IbadatPayment>> _paymentsMap = {};
@@ -42,6 +44,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     _paymentRepo = PaymentRepository(client);
     _groupRepo = IbadatGroupRepository(client);
     _settingsRepo = MemberSettingsRepository(client);
+    _profileRepo = ProfileRepository(client);
     _load();
   }
 
@@ -93,6 +96,50 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       return monthTotal >= fixed;
     }
     return monthPayments.any((p) => p.paidMonth);
+  }
+
+  Future<void> _deleteMember(IbadatProfile member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('🗑️', style: TextStyle(fontSize: 40)),
+            const SizedBox(height: 12),
+            Text(
+              '${member.displayName} жойылсын ба?',
+              style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Жоқ', style: TextStyle(color: Color(0xFF6B7280))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Жою', style: TextStyle(color: Color(0xFFEF4444))),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _profileRepo.deleteProfile(member.id);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Қате: $e')));
+    }
   }
 
   double get _grandTotal => _members.fold(
@@ -254,6 +301,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     );
                     _load();
                   },
+                  onDelete: count == 0 && member.role == 'user' ? () => _deleteMember(member) : null,
                 );
               }),
           ],
@@ -303,6 +351,7 @@ class _MemberPaymentTile extends StatelessWidget {
   final int paymentCount;
   final double fixedMonthlyAmount;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   static const _colors = [
     Color(0xFF6366F1),
@@ -323,6 +372,7 @@ class _MemberPaymentTile extends StatelessWidget {
     required this.paymentCount,
     this.fixedMonthlyAmount = 0,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -411,8 +461,21 @@ class _MemberPaymentTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Icon(Icons.chevron_right,
-                    color: Color(0xFF475569), size: 16),
+                if (onDelete != null)
+                  IconButton(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline,
+                        color: Color(0xFFEF4444), size: 18),
+                    style: IconButton.styleFrom(
+                      backgroundColor:
+                          const Color(0xFFEF4444).withValues(alpha: 0.1),
+                      minimumSize: const Size(32, 32),
+                      padding: EdgeInsets.zero,
+                    ),
+                  )
+                else
+                  const Icon(Icons.chevron_right,
+                      color: Color(0xFF475569), size: 16),
               ],
             ),
           ],

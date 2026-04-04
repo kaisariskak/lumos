@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
-import '../repositories/invite_code_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
@@ -158,13 +157,11 @@ class _AuthGateState extends State<AuthGate> {
       }
 
       if (!mounted) return;
-      // Super-admin never needs a group — go straight to MainScaffold
-      final isSuperAdmin = profile.isSuperAdmin;
+      // Admins and super-admins always go straight to MainScaffold.
+      // Admins create their first group from within the admin panel.
       setState(() {
         _profile = profile;
-        _showGroupPicker = !isSuperAdmin &&
-            profile?.currentGroupId == null &&
-            (profile?.isAdmin ?? false);
+        _showGroupPicker = false;
         _showInviteCode = false;
       });
     } catch (e) {
@@ -181,7 +178,6 @@ class _AuthGateState extends State<AuthGate> {
 
     try {
       final profileRepo = ProfileRepository(Supabase.instance.client);
-      final codeRepo = InviteCodeRepository(Supabase.instance.client);
       final email = user.email ?? '';
 
       if (_profile == null) {
@@ -218,9 +214,6 @@ class _AuthGateState extends State<AuthGate> {
           await profileRepo.updateCurrentGroup(_profile!.id, code.groupId);
         }
       }
-
-      // Mark code as used
-      await codeRepo.markUsed(code.id);
 
       // Reload profile to enter the app
       await _loadProfile();
@@ -379,6 +372,7 @@ class _AuthGateState extends State<AuthGate> {
     return MainScaffold(
       profile: _profile!,
       onSwitchGroup: () => setState(() => _showGroupPicker = true),
+      onReloadProfile: _loadProfile,
     );
   }
 }
