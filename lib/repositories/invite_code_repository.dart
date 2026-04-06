@@ -20,10 +20,10 @@ class InviteCodeRepository {
     return '$prefix-$part';
   }
 
-  /// Super-admin generates an ADMIN invite code (valid for 7 days).
+  /// Super-admin generates an ADMIN invite code (valid for 30 days).
   Future<InviteCode> generateAdminCode({required String createdBy}) async {
     final code = _generateCode('ADM');
-    final expiresAt = DateTime.now().add(const Duration(days: 7));
+    final expiresAt = DateTime.now().add(const Duration(days: 30));
     final data = await _client
         .from('ibadat_invite_codes')
         .insert({
@@ -39,13 +39,13 @@ class InviteCodeRepository {
     return InviteCode.fromJson(data);
   }
 
-  /// Admin generates a USER invite code for their group (valid for 24 hours).
+  /// Admin generates a USER invite code for their group (valid for 30 days).
   Future<InviteCode> generateUserCode({
     required String groupId,
     required String createdBy,
   }) async {
     final code = _generateCode('USR');
-    final expiresAt = DateTime.now().add(const Duration(hours: 24));
+    final expiresAt = DateTime.now().add(const Duration(days: 30));
     final data = await _client
         .from('ibadat_invite_codes')
         .insert({
@@ -132,6 +132,25 @@ class InviteCodeRepository {
         .maybeSingle();
     if (data == null) return null;
     return InviteCode.fromJson(data);
+  }
+
+  /// Returns active USER code for group, auto-generating a new one if expired.
+  Future<InviteCode> getOrCreateActiveUserCode({
+    required String groupId,
+    required String createdBy,
+  }) async {
+    final existing = await getActiveUserCode(groupId);
+    if (existing != null) return existing;
+    return generateUserCode(groupId: groupId, createdBy: createdBy);
+  }
+
+  /// Returns active ADMIN code, auto-generating a new one if expired.
+  Future<InviteCode> getOrCreateActiveAdminCode({
+    required String createdBy,
+  }) async {
+    final existing = await getActiveAdminCode(createdBy);
+    if (existing != null) return existing;
+    return generateAdminCode(createdBy: createdBy);
   }
 }
 

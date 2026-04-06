@@ -163,18 +163,22 @@ class _AdminScreenState extends State<AdminScreen> {
       } else {
         setState(() => _isLoading = false);
       }
-      // Load active invite codes
+      // Load active invite codes (auto-generate if expired)
       if (_isSuperAdmin) {
-        _activeAdminCode = await _codeRepo.getActiveAdminCode(widget.profile.id);
+        _activeAdminCode = await _codeRepo.getOrCreateActiveAdminCode(
+            createdBy: widget.profile.id);
       }
 
       // Load code and settings for initially selected group (admin)
       if (widget.profile.isAdmin && !_isSuperAdmin && _adminSelectedGroup != null) {
         final results = await Future.wait([
-          _codeRepo.getActiveUserCode(_adminSelectedGroup!.id),
+          _codeRepo.getOrCreateActiveUserCode(
+            groupId: _adminSelectedGroup!.id,
+            createdBy: widget.profile.id,
+          ),
           _settingsRepo.getSettings(_adminSelectedGroup!.id),
         ]);
-        final code = results[0] as InviteCode?;
+        final code = results[0] as InviteCode;
         final settings = (results[1] as IbadatGroupSettings?) ??
             IbadatGroupSettings(groupId: _adminSelectedGroup!.id, maxValues: {});
         for (final cat in IbadatCategory.all) {
@@ -269,11 +273,14 @@ class _AdminScreenState extends State<AdminScreen> {
     });
     // Загружаем код и настройки для выбранной группы
     final results = await Future.wait([
-      _codeRepo.getActiveUserCode(g.id),
+      _codeRepo.getOrCreateActiveUserCode(
+        groupId: g.id,
+        createdBy: widget.profile.id,
+      ),
       _settingsRepo.getSettings(g.id),
     ]);
     if (!mounted) return;
-    final code = results[0] as InviteCode?;
+    final code = results[0] as InviteCode;
     final settings = (results[1] as IbadatGroupSettings?) ??
         IbadatGroupSettings(groupId: g.id, maxValues: {});
     final ctrls = <String, TextEditingController>{};
