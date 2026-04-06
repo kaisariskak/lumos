@@ -6,6 +6,34 @@ import '../../theme/accent_provider.dart';
 import '../../models/ibadat_payment.dart';
 import '../../models/ibadat_profile.dart';
 
+class _ThousandSeparator extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue next) {
+    final digits = next.text.replaceAll(' ', '');
+    if (digits.isEmpty) return next.copyWith(text: '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(' ');
+      buf.write(digits[i]);
+    }
+    final formatted = buf.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+String _fmt(double v) {
+  final s = v.toStringAsFixed(0);
+  final buf = StringBuffer();
+  for (int i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
+    buf.write(s[i]);
+  }
+  return buf.toString();
+}
+
 class AddPaymentDialog extends StatefulWidget {
   final IbadatProfile member;
   final String groupId;
@@ -39,7 +67,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
     super.initState();
     if (_isEdit) {
       final p = widget.existing!;
-      _amountCtrl.text = p.amount.toStringAsFixed(0);
+      _amountCtrl.text = _fmt(p.amount);
       _paymentDate = p.paymentDate;
       _paidMonth = p.paidMonth;
       _paidExtra = p.paidExtra;
@@ -74,7 +102,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
   bool _computePaidMonth(double amount) => _paidMonth;
 
   void _submit() {
-    final raw = _amountCtrl.text.trim();
+    final raw = _amountCtrl.text.trim().replaceAll(' ', '');
     if (raw.isEmpty) return;
     final amount = double.tryParse(raw);
     if (amount == null || amount <= 0) return;
@@ -150,7 +178,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, _ThousandSeparator()],
               style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontSize: 18,

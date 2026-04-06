@@ -59,13 +59,103 @@ class _CounterBtn extends StatelessWidget {
   }
 }
 
+class _PeriodNavigator extends StatelessWidget {
+  final List<IbadatPeriod> periods;
+  final IbadatPeriod? selected;
+  final ValueChanged<IbadatPeriod> onChanged;
+  final String langCode;
+  final Color accentColor;
+
+  const _PeriodNavigator({
+    required this.periods,
+    required this.selected,
+    required this.onChanged,
+    required this.langCode,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final idx = selected == null ? -1 : periods.indexWhere((p) => p.id == selected!.id);
+    final canPrev = idx < periods.length - 1;
+    final canNext = idx > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _ArrowBtn(
+            icon: Icons.chevron_left,
+            enabled: canPrev,
+            accentColor: accentColor,
+            onTap: () => onChanged(periods[idx + 1]),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                const Icon(Icons.calendar_today, color: Color(0xFF64748B), size: 13),
+                const SizedBox(height: 2),
+                Text(
+                  selected?.dateRangeLabelLocalized(langCode) ?? '',
+                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          _ArrowBtn(
+            icon: Icons.chevron_right,
+            enabled: canNext,
+            accentColor: accentColor,
+            onTap: () => onChanged(periods[idx - 1]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArrowBtn extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  const _ArrowBtn({required this.icon, required this.enabled, required this.accentColor, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: enabled ? accentColor.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(
+          icon,
+          color: enabled ? accentColor : const Color(0xFF334155),
+          size: 22,
+        ),
+      ),
+    );
+  }
+}
+
 class _ReportEditorScreenState extends State<ReportEditorScreen> {
   late final IbadatReportRepository _repo;
   late final IbadatPeriodRepository _periodRepo;
-  late final int _currentMonth;
-  late final int _currentYear;
   late IbadatReport _report;
-  IbadatPeriod? _period;
+  List<IbadatPeriod> _periods = [];
+  IbadatPeriod? _selectedPeriod;
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -76,33 +166,76 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
     _repo = IbadatReportRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
     final now = DateTime.now();
-    _currentMonth = now.month;
-    _currentYear = now.year;
     _report = IbadatReport(
       userId: widget.profile.id,
       groupId: widget.group.id,
-      month: _currentMonth,
-      year: _currentYear,
+      month: now.month,
+      year: now.year,
     );
     _loadExisting();
   }
 
   Future<void> _loadExisting() async {
     try {
-      final results = await Future.wait([
-        _repo.getReport(
+      // Repository already returns newest first (order by start_date DESC)
+      final periods = await _periodRepo.getPeriodsForGroup(widget.group.id);
+      final selected = periods.isNotEmpty ? periods.first : null;
+
+      IbadatReport? existing;
+      if (selected != null) {
+        existing = await _repo.getReportByPeriod(
           userId: widget.profile.id,
           groupId: widget.group.id,
-          month: _currentMonth,
-          year: _currentYear,
-        ),
-        _periodRepo.getPeriodsForGroup(widget.group.id),
-      ]);
-      final existing = results[0] as IbadatReport?;
-      final periods = results[1] as List;
+          periodId: selected.id,
+        );
+      } else {
+        final now = DateTime.now();
+        existing = await _repo.getReport(
+          userId: widget.profile.id,
+          groupId: widget.group.id,
+          month: now.month,
+          year: now.year,
+        );
+      }
+
       setState(() {
-        if (existing != null) _report = existing;
-        if (periods.isNotEmpty) _period = periods.first as IbadatPeriod;
+        _periods = periods;
+        _selectedPeriod = selected;
+        if (existing != null) {
+          _report = existing;
+        } else if (selected != null) {
+          _report = IbadatReport(
+            userId: widget.profile.id,
+            groupId: widget.group.id,
+            periodId: selected.id,
+            month: selected.startDate.month,
+            year: selected.startDate.year,
+          );
+        }
+        _isLoading = false;
+      });
+    } catch (_) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _onPeriodSelected(IbadatPeriod period) async {
+    setState(() => _isLoading = true);
+    try {
+      final existing = await _repo.getReportByPeriod(
+        userId: widget.profile.id,
+        groupId: widget.group.id,
+        periodId: period.id,
+      );
+      setState(() {
+        _selectedPeriod = period;
+        _report = existing ?? IbadatReport(
+          userId: widget.profile.id,
+          groupId: widget.group.id,
+          periodId: period.id,
+          month: period.startDate.month,
+          year: period.startDate.year,
+        );
         _isLoading = false;
       });
     } catch (_) {
@@ -148,44 +281,6 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              // Back button row
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        if (widget.onBack != null) {
-                          widget.onBack!();
-                        } else {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.1)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.chevron_left,
-                                color: Color(0xFF94A3B8), size: 20),
-                            Text(S.of(context).back,
-                                style: const TextStyle(
-                                    color: Color(0xFF94A3B8), fontSize: 14)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
               Expanded(
                 child: _isLoading
                     ? Center(
@@ -231,11 +326,23 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _period?.dateRangeLabelLocalized(S.of(context).languageCode) ?? WeekUtils.currentMonthLabel(),
+                              _selectedPeriod?.dateRangeLabelLocalized(S.of(context).languageCode) ?? WeekUtils.currentMonthLabel(),
                               style: const TextStyle(
                                   color: Color(0xFF94A3B8), fontSize: 13),
                             ),
                             const SizedBox(height: 10),
+
+                            // Period selector with arrow navigation
+                            if (_periods.isNotEmpty) ...[
+                              _PeriodNavigator(
+                                periods: _periods,
+                                selected: _selectedPeriod,
+                                onChanged: _onPeriodSelected,
+                                langCode: S.of(context).languageCode,
+                                accentColor: AccentProvider.instance.current.accent,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                             Container(
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 14, vertical: 6),

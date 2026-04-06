@@ -97,6 +97,14 @@ class AppStrings {
   final String adminAssigned;
   final String updateFailed;
   final String addFailed;
+  final String myAdminsTitle;
+  final String noAdmins;
+  final String addAdminHint;
+  final String ungroupedUsers;
+  final String ungroupedUsersDesc;
+  final String maxValuesTitle;
+  final String maxValuesHint;
+  final String periodHasReports;
 
   // ── Periods ────────────────────────────────────────────
   final String periods;
@@ -188,6 +196,7 @@ class AppStrings {
   final String paymentUnit;
   final String youLabel;
   final String membersTitle;
+  final String memberRoleLabel;
   final String currentWeekLabel;
   final String weeksAgoSuffix;
 
@@ -276,6 +285,14 @@ class AppStrings {
     required this.adminAssigned,
     required this.updateFailed,
     required this.addFailed,
+    required this.myAdminsTitle,
+    required this.noAdmins,
+    required this.addAdminHint,
+    required this.ungroupedUsers,
+    required this.ungroupedUsersDesc,
+    required this.maxValuesTitle,
+    required this.maxValuesHint,
+    required this.periodHasReports,
     required this.periods,
     required this.noPeriods,
     required this.createPeriod,
@@ -353,6 +370,7 @@ class AppStrings {
     required this.paymentUnit,
     required this.youLabel,
     required this.membersTitle,
+    required this.memberRoleLabel,
     required this.currentWeekLabel,
     required this.weeksAgoSuffix,
   });
@@ -450,6 +468,14 @@ const _kk = AppStrings(
   adminAssigned: 'топ admini болды 👑',
   updateFailed: 'Жаңарту сәтсіз болды. Supabase RLS рұқсатын тексеріңіз.',
   addFailed: 'Жаңарту сәтсіз: RLS рұқсаты жоқ немесе топ табылмады',
+  myAdminsTitle: 'Менің Администраторларым',
+  noAdmins: 'Администраторлар жоқ',
+  addAdminHint: 'Жаңа admin қосу',
+  ungroupedUsers: 'Топсыз пайдаланушылар',
+  ungroupedUsersDesc: 'Топтан шығарылған. Тек супер-admin қосымша топ тағайындай алады.',
+  maxValuesTitle: 'Максималды мəндер',
+  maxValuesHint: 'Осы мəндер негізінде пайыз есептеледі',
+  periodHasReports: 'Бұл кезеңде есептер бар. Алдымен есептерді жойыңыз.',
 
   periods: 'Кезеңдер',
   noPeriods: 'Кезең жоқ',
@@ -531,6 +557,7 @@ const _kk = AppStrings(
   paymentUnit: 'төлем',
   youLabel: 'Сіз',
   membersTitle: 'Мүшелер',
+  memberRoleLabel: 'Мүше',
   currentWeekLabel: 'Ағымдағы апта',
   weeksAgoSuffix: ' апта бұрын',
 );
@@ -627,6 +654,14 @@ const _ru = AppStrings(
   adminAssigned: 'назначен администратором 👑',
   updateFailed: 'Обновление не удалось. Проверьте RLS разрешения Supabase.',
   addFailed: 'Обновление не удалось: нет RLS разрешения или группа не найдена',
+  myAdminsTitle: 'Мои администраторы',
+  noAdmins: 'Нет администраторов',
+  addAdminHint: 'Добавить нового admin',
+  ungroupedUsers: 'Пользователи без группы',
+  ungroupedUsersDesc: 'Удалены из группы. Только супер-admin может назначить дополнительную группу.',
+  maxValuesTitle: 'Максимальные значения',
+  maxValuesHint: 'На основе этих значений рассчитываются проценты',
+  periodHasReports: 'В этом периоде есть отчёты. Сначала удалите отчёты.',
 
   periods: 'Периоды',
   noPeriods: 'Периодов нет',
@@ -708,6 +743,7 @@ const _ru = AppStrings(
   paymentUnit: 'платёж',
   youLabel: 'Вы',
   membersTitle: 'Участники',
+  memberRoleLabel: 'Участник',
   currentWeekLabel: 'Текущая неделя',
   weeksAgoSuffix: ' нед. назад',
 );
@@ -739,7 +775,7 @@ extension AppStringsX on AppStrings {
       case 'audio_minutes': return 'Аудио';
       case 'salawat_count': return 'Салауат';
       case 'istighfar_count': return 'Істіғфар';
-      case 'tahajjud_count': return 'Тəжаджуд';
+      case 'tahajjud_count': return 'Таһажуд';
       case 'zikir_count': return 'Зікір';
       default: return key;
     }

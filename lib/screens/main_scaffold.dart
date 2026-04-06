@@ -296,35 +296,6 @@ class _BottomNav extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AccentProvider.instance.current.accent
-                      .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AccentProvider.instance.current.accent
-                          .withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('👥', style: TextStyle(fontSize: 10)),
-                    const SizedBox(width: 4),
-                    Text(
-                      groupName,
-                      style: TextStyle(
-                        color: AccentProvider.instance.current.accentLight,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: tabs.asMap().entries.map((entry) {

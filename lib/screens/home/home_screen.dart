@@ -17,9 +17,36 @@ import '../../widgets/mini_bar_chart.dart';
 import '../../widgets/ring_indicator.dart';
 import '../detail/detail_screen.dart';
 
+// ── Data container for one group ──────────────────────────────────────────────
+class _GroupSection {
+  final IbadatGroup group;
+  List<IbadatProfile> members = [];
+  IbadatGroupSettings? settings;
+  List<IbadatPeriod> periods = [];
+  int periodIdx = 0;
+  // month → userId → report
+  Map<int, Map<String, IbadatReport>> trendReports = {};
+  Map<String, IbadatReport> monthlyReports = {};
+  bool expanded = false;
+
+  _GroupSection({required this.group});
+
+  int get viewMonth => periods.isNotEmpty
+      ? periods[periodIdx.clamp(0, periods.length - 1)].startDate.month
+      : DateTime.now().month;
+
+  int get viewYear => periods.isNotEmpty
+      ? periods[periodIdx.clamp(0, periods.length - 1)].startDate.year
+      : DateTime.now().year;
+
+  bool get isPeriodMode => periods.isNotEmpty;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 class HomeScreen extends StatefulWidget {
   final IbadatProfile profile;
-  final IbadatGroup group;
+  final IbadatGroup group; // the user's current group (used for non-admin)
   final VoidCallback onSwitchGroup;
 
   const HomeScreen({
@@ -35,37 +62,45 @@ class HomeScreen extends StatefulWidget {
 
 class HomeScreenState extends State<HomeScreen> {
   void reload() => _loadData();
+
   late final IbadatGroupRepository _groupRepo;
   late final IbadatReportRepository _reportRepo;
   late final IbadatGroupSettingsRepository _settingsRepo;
-
-  IbadatGroupSettings? _groupSettings;
-  List<IbadatProfile> _members = [];
-  // userId → IbadatReport for current viewed month
-  Map<String, IbadatReport> _monthlyReports = {};
-  // month → userId → IbadatReport, for last 4 months/periods trend chart
-  Map<int, Map<String, IbadatReport>> _trendReports = {};
+  late final IbadatPeriodRepository _periodRepo;
 
   bool _isLoading = true;
 
-  // Month mode (super-admin)
-  late int _viewMonth;
-  late int _viewYear;
+  // Admin: list of group sections
+  List<_GroupSection> _sections = [];
 
-  // Period mode (regular admin/user)
-  late final IbadatPeriodRepository _periodRepo;
-  List<IbadatPeriod> _periods = [];
-  int _periodIdx = 0;
-  bool _isPeriodMode = false;
+  // Non-admin (user): single group data
+  IbadatGroupSettings? _userSettings;
+  List<IbadatProfile> _userMembers = [];
+  Map<String, IbadatReport> _userMonthlyReports = {};
+  Map<int, Map<String, IbadatReport>> _userTrendReports = {};
+  List<IbadatPeriod> _userPeriods = [];
+  int _userPeriodIdx = 0;
+  int _viewMonth = DateTime.now().month;
+  int _viewYear = DateTime.now().year;
 
+  bool get _isAdmin => widget.profile.isAdmin;
   bool get _isSuperAdmin => widget.profile.isSuperAdmin;
+
+  static List<(int, int)> _lastFourMonths(int month, int year) {
+    return List.generate(4, (i) {
+      int m = month - (3 - i);
+      int y = year;
+      while (m < 1) {
+        m += 12;
+        y--;
+      }
+      return (m, y);
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _viewMonth = now.month;
-    _viewYear = now.year;
     final client = Supabase.instance.client;
     _groupRepo = IbadatGroupRepository(client);
     _reportRepo = IbadatReportRepository(client);
@@ -74,149 +109,220 @@ class HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
-  /// Returns the last 4 months as (month, year) pairs, oldest first
-  static List<(int, int)> _lastFourMonths(int month, int year) {
-    return List.generate(4, (i) {
-      int m = month - (3 - i);
-      int y = year;
-      while (m < 1) { m += 12; y--; }
-      return (m, y);
-    });
-  }
-
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final members = await _groupRepo.getGroupMembers(widget.group.id);
-      final groupSettings = await _settingsRepo.getSettings(widget.group.id);
-
-      // Load periods for non-super-admin
-      List<IbadatPeriod> periods = [];
-      if (!_isSuperAdmin) {
-        final loaded = await _periodRepo.getPeriodsForGroup(widget.group.id);
-        periods = loaded.reversed.toList(); // oldest first
-      }
-      final isPeriodMode = periods.isNotEmpty;
-
-      // Determine which month to load
-      int viewMonth = _viewMonth;
-      int viewYear = _viewYear;
-      if (isPeriodMode) {
-        final idx = _periodIdx.clamp(0, periods.length - 1);
-        viewMonth = periods[idx].startDate.month;
-        viewYear = periods[idx].startDate.year;
-      }
-
-      // Load reports for the current view month
-      final Map<String, IbadatReport> current = {};
-      if (widget.profile.isAdmin) {
-        final reports = await _reportRepo.getGroupReports(
-          groupId: widget.group.id, month: viewMonth, year: viewYear,
-        );
-        for (final r in reports) { current[r.userId] = r; }
+      if (_isAdmin && !_isSuperAdmin) {
+        await _loadAdminData();
       } else {
-        final r = await _reportRepo.getReport(
-          userId: widget.profile.id, groupId: widget.group.id,
-          month: viewMonth, year: viewYear,
-        );
-        if (r != null) current[r.userId] = r;
+        await _loadUserData();
       }
+    } catch (_) {
+      // ignore
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
 
-      // Load trend data (last 4 periods or last 4 months)
-      final Map<int, Map<String, IbadatReport>> trend = {};
-      final trendMonths = isPeriodMode
-          ? periods.take(4).map((p) => (p.startDate.month, p.startDate.year)).toList()
-          : _lastFourMonths(viewMonth, viewYear);
+  // ── Admin: load all groups this admin owns ──────────────────────────────────
+  Future<void> _loadAdminData() async {
+    final allGroups = await _groupRepo.getAllGroups();
+    final myGroups =
+        allGroups.where((g) => g.adminId == widget.profile.id).toList();
 
-      for (final (m, y) in trendMonths) {
-        if (widget.profile.isAdmin) {
-          final reports = await _reportRepo.getGroupReports(
-            groupId: widget.group.id, month: m, year: y,
-          );
-          trend[m] = {for (final r in reports) r.userId: r};
-        } else {
-          final r = await _reportRepo.getReport(
-            userId: widget.profile.id, groupId: widget.group.id, month: m, year: y,
-          );
-          trend[m] = r != null ? {r.userId: r} : {};
-        }
-      }
+    // Build sections in parallel
+    final sections = await Future.wait(myGroups.map(_loadSection));
 
-      if (mounted) {
-        setState(() {
-          _members = members;
-          _groupSettings = groupSettings;
-          _periods = periods;
-          _isPeriodMode = isPeriodMode;
-          _viewMonth = viewMonth;
-          _viewYear = viewYear;
-          _monthlyReports = current;
-          _trendReports = trend;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() {
+        _sections = sections;
+      });
     }
   }
 
-  IbadatReport? _getReport(String userId) => _monthlyReports[userId];
+  Future<_GroupSection> _loadSection(IbadatGroup group) async {
+    final section = _GroupSection(group: group);
 
-  double _calcScore(String userId) {
-    final report = _getReport(userId);
-    if (report == null) return 0;
-    return _scoreFromReport(report);
+    final results = await Future.wait([
+      _groupRepo.getGroupMembers(group.id),
+      _settingsRepo.getSettings(group.id),
+      _periodRepo.getPeriodsForGroup(group.id),
+    ]);
+
+    section.members = results[0] as List<IbadatProfile>;
+    section.settings = results[1] as IbadatGroupSettings?;
+    final periodsRaw = results[2] as List<IbadatPeriod>;
+    section.periods = periodsRaw.reversed.toList(); // oldest first
+
+    await _loadSectionReports(section);
+    return section;
   }
 
-  double _scoreFromReport(IbadatReport report) {
+  Future<void> _loadSectionReports(_GroupSection section) async {
+    final month = section.viewMonth;
+    final year = section.viewYear;
+
+    // Current period reports
+    if (section.isPeriodMode) {
+      final period = section.periods[section.periodIdx.clamp(0, section.periods.length - 1)];
+      final reports = await _reportRepo.getGroupReportsByPeriod(
+        groupId: section.group.id,
+        periodId: period.id,
+      );
+      section.monthlyReports = {for (final r in reports) r.userId: r};
+    } else {
+      final reports = await _reportRepo.getGroupReports(
+        groupId: section.group.id,
+        month: month,
+        year: year,
+      );
+      section.monthlyReports = {for (final r in reports) r.userId: r};
+    }
+
+    // Trend: last 4 periods or last 4 months
+    final Map<int, Map<String, IbadatReport>> trend = {};
+    if (section.isPeriodMode) {
+      for (final p in section.periods.take(4)) {
+        final rs = await _reportRepo.getGroupReportsByPeriod(
+          groupId: section.group.id,
+          periodId: p.id,
+        );
+        trend[p.startDate.month] = {for (final r in rs) r.userId: r};
+      }
+    } else {
+      for (final (m, y) in _lastFourMonths(month, year)) {
+        final rs = await _reportRepo.getGroupReports(
+          groupId: section.group.id,
+          month: m,
+          year: y,
+        );
+        trend[m] = {for (final r in rs) r.userId: r};
+      }
+    }
+    section.trendReports = trend;
+  }
+
+  // ── User: single group ──────────────────────────────────────────────────────
+  Future<void> _loadUserData() async {
+    final members = await _groupRepo.getGroupMembers(widget.group.id);
+    final settings = await _settingsRepo.getSettings(widget.group.id);
+    final loadedPeriods =
+        await _periodRepo.getPeriodsForGroup(widget.group.id);
+    final periods = loadedPeriods.reversed.toList();
+
+    final isPeriodMode = periods.isNotEmpty;
+    int viewMonth = _viewMonth;
+    int viewYear = _viewYear;
+    if (isPeriodMode) {
+      final idx = _userPeriodIdx.clamp(0, periods.length - 1);
+      viewMonth = periods[idx].startDate.month;
+      viewYear = periods[idx].startDate.year;
+    }
+
+    final Map<String, IbadatReport> monthly = {};
+    if (isPeriodMode) {
+      final period = periods[_userPeriodIdx.clamp(0, periods.length - 1)];
+      final r = await _reportRepo.getReportByPeriod(
+        userId: widget.profile.id,
+        groupId: widget.group.id,
+        periodId: period.id,
+      );
+      if (r != null) monthly[r.userId] = r;
+    } else {
+      final r = await _reportRepo.getReport(
+        userId: widget.profile.id,
+        groupId: widget.group.id,
+        month: viewMonth,
+        year: viewYear,
+      );
+      if (r != null) monthly[r.userId] = r;
+    }
+
+    final Map<int, Map<String, IbadatReport>> trend = {};
+    if (isPeriodMode) {
+      for (final p in periods.take(4)) {
+        final tr = await _reportRepo.getReportByPeriod(
+          userId: widget.profile.id,
+          groupId: widget.group.id,
+          periodId: p.id,
+        );
+        trend[p.startDate.month] = tr != null ? {tr.userId: tr} : {};
+      }
+    } else {
+      for (final (m, y) in _lastFourMonths(viewMonth, viewYear)) {
+        final tr = await _reportRepo.getReport(
+          userId: widget.profile.id,
+          groupId: widget.group.id,
+          month: m,
+          year: y,
+        );
+        trend[m] = tr != null ? {tr.userId: tr} : {};
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _userMembers = members;
+        _userSettings = settings;
+        _userPeriods = periods;
+        _viewMonth = viewMonth;
+        _viewYear = viewYear;
+        _userMonthlyReports = monthly;
+        _userTrendReports = trend;
+      });
+    }
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  double _calcScore(String userId, Map<String, IbadatReport> monthly,
+      IbadatGroupSettings? settings) {
+    final report = monthly[userId];
+    if (report == null) return 0;
     double sum = 0;
     for (final cat in IbadatCategory.all) {
-      final max = _groupSettings?.getMax(cat.key) ?? cat.monthMax;
+      final max = settings?.getMax(cat.key) ?? cat.monthMax;
       sum += (report.getValue(cat.key) / max).clamp(0.0, 1.0);
     }
     return sum / IbadatCategory.all.length;
   }
 
-  List<int> _trendValues(String userId) {
-    final months = _lastFourMonths(_viewMonth, _viewYear);
+  List<int> _trendValues(String userId,
+      Map<int, Map<String, IbadatReport>> trendReports, int month, int year) {
+    final months = _lastFourMonths(month, year);
     return months.map((pair) {
-      final r = _trendReports[pair.$1]?[userId];
+      final r = trendReports[pair.$1]?[userId];
       return r?.quranPages ?? 0;
     }).toList();
   }
 
+  // ── Period navigation ────────────────────────────────────────────────────────
+
   void _prevMonth() {
     setState(() {
       _viewMonth--;
-      if (_viewMonth < 1) { _viewMonth = 12; _viewYear--; }
+      if (_viewMonth < 1) {
+        _viewMonth = 12;
+        _viewYear--;
+      }
     });
-    _loadData();
+    _loadUserData();
   }
 
   void _nextMonth() {
     final now = DateTime.now();
-    if (_viewYear > now.year || (_viewYear == now.year && _viewMonth >= now.month)) return;
+    if (_viewYear > now.year ||
+        (_viewYear == now.year && _viewMonth >= now.month)) { return; }
     setState(() {
       _viewMonth++;
-      if (_viewMonth > 12) { _viewMonth = 1; _viewYear++; }
+      if (_viewMonth > 12) {
+        _viewMonth = 1;
+        _viewYear++;
+      }
     });
-    _loadData();
+    _loadUserData();
   }
 
-  List<IbadatProfile> get _sorted {
-    final list = List<IbadatProfile>.from(_members);
-    list.sort((a, b) => _calcScore(b.id).compareTo(_calcScore(a.id)));
-    // Non-admin users only see themselves
-    if (!widget.profile.isAdmin) {
-      return list.where((m) => m.id == widget.profile.id).toList();
-    }
-    return list;
-  }
-
-  double _groupScore() {
-    if (_members.isEmpty) return 0;
-    return _members.fold(0.0, (s, m) => s + _calcScore(m.id)) / _members.length;
-  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -225,403 +331,767 @@ class HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
-            )
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)))
           : RefreshIndicator(
               onRefresh: _loadData,
               color: const Color(0xFF6366F1),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 56, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 56, 16, 80),
                 children: [
-                  // Header
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(s.greeting,
-                                style: const TextStyle(
-                                    color: Color(0xFF64748B), fontSize: 13)),
-                            Text(
-                              '${widget.profile.displayName.split(' ').first} 👋',
-                              style: const TextStyle(
-                                color: Color(0xFFE2E8F0),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: widget.onSwitchGroup,
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                            ),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Center(
-                            child: Text(
-                              widget.profile.displayName[0].toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(widget.profile.email,
-                      style: const TextStyle(
-                          color: Color(0xFF475569), fontSize: 12)),
+                  _buildHeader(s),
                   const SizedBox(height: 16),
-
-                  // Group progress bar
-                  _GroupProgressBar(
-                    groupName: widget.group.name,
-                    memberCount: _members.length,
-                    score: _groupScore(),
-                  ),
-
-                  // Group badge (tappable to switch group)
-                  GestureDetector(
-                    onTap: widget.onSwitchGroup,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF6366F1).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(40),
-                        border: Border.all(
-                            color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('👥', style: TextStyle(fontSize: 13)),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.group.name,
-                            style: const TextStyle(
-                              color: Color(0xFFA5B4FC),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Navigator: periods for regular admin/user, months for super-admin
-                  Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.02),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-                    ),
-                    child: _isPeriodMode
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              IconButton(
-                                onPressed: _periodIdx > 0
-                                    ? () { setState(() => _periodIdx--); _loadData(); }
-                                    : null,
-                                icon: Icon(Icons.chevron_left,
-                                    color: _periodIdx > 0
-                                        ? const Color(0xFFA5B4FC)
-                                        : const Color(0xFF334155)),
-                              ),
-                              Column(
-                                children: [
-                                  Text(
-                                    _periods[_periodIdx].dateRangeLabelLocalized(s.languageCode),
-                                    style: const TextStyle(
-                                        color: Color(0xFFE2E8F0),
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14),
-                                  ),
-                                  Text(
-                                    _periods[_periodIdx].label,
-                                    style: const TextStyle(
-                                        color: Color(0xFF64748B), fontSize: 11),
-                                  ),
-                                ],
-                              ),
-                              IconButton(
-                                onPressed: _periodIdx < _periods.length - 1
-                                    ? () { setState(() => _periodIdx++); _loadData(); }
-                                    : null,
-                                icon: Icon(Icons.chevron_right,
-                                    color: _periodIdx < _periods.length - 1
-                                        ? const Color(0xFFA5B4FC)
-                                        : const Color(0xFF334155)),
-                              ),
-                            ],
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              IconButton(
-                                onPressed: _prevMonth,
-                                icon: const Icon(Icons.chevron_left,
-                                    color: Color(0xFFA5B4FC)),
-                              ),
-                              Text(
-                                WeekUtils.monthLabel(_viewMonth, _viewYear),
-                                style: const TextStyle(
-                                    color: Color(0xFFE2E8F0),
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14),
-                              ),
-                              IconButton(
-                                onPressed: () {
-                                  final now = DateTime.now();
-                                  if (_viewYear < now.year ||
-                                      (_viewYear == now.year &&
-                                          _viewMonth < now.month)) {
-                                    _nextMonth();
-                                  }
-                                },
-                                icon: Icon(Icons.chevron_right,
-                                    color: (_viewYear < DateTime.now().year ||
-                                            (_viewYear == DateTime.now().year &&
-                                                _viewMonth < DateTime.now().month))
-                                        ? const Color(0xFFA5B4FC)
-                                        : const Color(0xFF334155)),
-                              ),
-                            ],
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Ranking list
-                  if (_members.isEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(40),
-                        child: Column(
-                          children: [
-                            const Text('😭', style: TextStyle(fontSize: 48)),
-                            const SizedBox(height: 12),
-                            Text(
-                              s.noMembers,
-                              style: const TextStyle(
-                                color: Color(0xFF64748B),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
+                  if (_isAdmin && !_isSuperAdmin)
+                    ..._buildAdminContent(s)
                   else
-                    ..._sorted.asMap().entries.map((entry) {
-                      final idx = entry.key;
-                      final member = entry.value;
-                      final score = _calcScore(member.id);
-                      final trend = _trendValues(member.id);
-                      final isMe = member.id == widget.profile.id;
-                      final medal = idx == 0
-                          ? '🥇'
-                          : idx == 1
-                              ? '🥈'
-                              : idx == 2
-                                  ? '🥉'
-                                  : null;
-                      final catColor = IbadatCategory
-                          .all[idx % IbadatCategory.all.length].color;
-
-                      final canViewDetail =
-                          widget.profile.isAdmin || member.id == widget.profile.id;
-                      return GestureDetector(
-                        onTap: canViewDetail
-                            ? () {
-                                Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (_) => DetailScreen(
-                                    profile: member,
-                                    report: _getReport(member.id),
-                                    weekLabel: WeekUtils.monthLabel(_viewMonth, _viewYear),
-                                    isWeekMode: false,
-                                    monthReports: _trendReports.values
-                                        .map((m) => m[member.id])
-                                        .whereType<IbadatReport>()
-                                        .toList(),
-                                  ),
-                                ));
-                              }
-                            : null,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            gradient: idx == 0
-                                ? LinearGradient(
-                                    colors: [
-                                      const Color(0xFFFBBF24).withValues(alpha: 0.08),
-                                      const Color(0xFFF59E0B).withValues(alpha: 0.04),
-                                    ],
-                                  )
-                                : null,
-                            color: idx == 0
-                                ? null
-                                : Colors.white.withValues(alpha: 0.03),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isMe
-                                  ? const Color(0xFF6366F1).withValues(alpha: 0.3)
-                                  : idx == 0
-                                      ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
-                                      : Colors.white.withValues(alpha: 0.06),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              // Rank
-                              SizedBox(
-                                width: 28,
-                                child: medal != null
-                                    ? Text(medal,
-                                        style: const TextStyle(fontSize: 18))
-                                    : Text(
-                                        '${idx + 1}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF64748B),
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                              ),
-
-                              // Avatar
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      catColor.withValues(alpha: 0.4),
-                                      catColor.withValues(alpha: 0.2),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(21),
-                                ),
-                                child: Stack(
-                                  children: [
-                                    Center(
-                                      child: Text(
-                                        member.displayName[0].toUpperCase(),
-                                        style: TextStyle(
-                                          color: catColor,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 17,
-                                        ),
-                                      ),
-                                    ),
-                                    if (member.isAdmin)
-                                      Positioned(
-                                        top: -2,
-                                        right: -2,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 3, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF59E0B),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: const Text('👑',
-                                              style: TextStyle(fontSize: 8)),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // Name + categories
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          member.displayName.split(' ').first,
-                                          style: const TextStyle(
-                                            color: Color(0xFFE2E8F0),
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        if (isMe) ...[
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF6366F1)
-                                                  .withValues(alpha: 0.2),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              s.youLabel,
-                                              style: const TextStyle(
-                                                color: Color(0xFFA5B4FC),
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    _CategoryChips(
-                                      report: _getReport(member.id),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // Ring + trend
-                              Column(
-                                children: [
-                                  RingIndicator(value: score, size: 46),
-                                  const SizedBox(height: 3),
-                                  MiniBarChart(
-                                    values: trend,
-                                    color: const Color(0xFF6366F1),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 80),
+                    ..._buildUserContent(s),
                 ],
               ),
             ),
     );
   }
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+
+  Widget _buildHeader(AppStrings s) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.greeting,
+                  style: const TextStyle(
+                      color: Color(0xFF64748B), fontSize: 13)),
+              Text(
+                '${widget.profile.displayName.split(' ').first} 👋',
+                style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        GestureDetector(
+          onTap: widget.onSwitchGroup,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Center(
+              child: Text(
+                widget.profile.displayName[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Admin view: multiple groups ──────────────────────────────────────────────
+
+  List<Widget> _buildAdminContent(AppStrings s) {
+    final totalMembers = _sections.fold(0, (sum, sec) {
+      // exclude admin from count
+      return sum + sec.members.where((m) => m.id != widget.profile.id).length;
+    });
+
+    return [
+      // Admin's own card
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF6366F1).withValues(alpha: 0.15),
+              const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  widget.profile.displayName[0].toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.profile.displayName,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '👑 ${s.groupAdminLabel}',
+                    style: const TextStyle(color: Color(0xFFA5B4FC), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${_sections.length}',
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(s.groupLabel, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                const SizedBox(height: 4),
+                Text(
+                  '$totalMembers',
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(s.memberCount, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+              ],
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+
+      if (_sections.isEmpty)
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              children: [
+                const Text('👥', style: TextStyle(fontSize: 48)),
+                const SizedBox(height: 12),
+                Text(s.noMembers, style: const TextStyle(color: Color(0xFF64748B), fontSize: 15)),
+              ],
+            ),
+          ),
+        )
+      else
+        ..._sections.map((section) => _buildGroupSection(section, s)),
+    ];
+  }
+
+  Widget _buildGroupSection(_GroupSection section, AppStrings s) {
+    final totalMembers = section.members.where((m) => m.id != widget.profile.id).length;
+    final groupScore = totalMembers == 0
+        ? 0.0
+        : section.members.fold(0.0, (sum, m) {
+              return sum +
+                  _calcScore(m.id, section.monthlyReports, section.settings);
+            }) /
+            totalMembers;
+
+    // Exclude admin from member list — admin is shown separately at the top
+    final sorted = List<IbadatProfile>.from(
+        section.members.where((m) => m.id != widget.profile.id));
+    sorted.sort((a, b) =>
+        _calcScore(b.id, section.monthlyReports, section.settings)
+            .compareTo(_calcScore(a.id, section.monthlyReports, section.settings)));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Group header — tap to expand/collapse
+        GestureDetector(
+          onTap: () => setState(() => section.expanded = !section.expanded),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF6366F1).withValues(alpha: 0.1),
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.06),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Text('👥', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.group.name,
+                        style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        '$totalMembers ${s.memberCount}  ·  ${(groupScore * 100).round()}%',
+                        style: const TextStyle(
+                            color: Color(0xFF94A3B8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                // Period label
+                if (section.isPeriodMode)
+                  Text(
+                    section.periods[section.periodIdx
+                            .clamp(0, section.periods.length - 1)]
+                        .dateRangeLabelLocalized(s.languageCode),
+                    style: const TextStyle(
+                        color: Color(0xFF64748B), fontSize: 11),
+                  ),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: section.expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(Icons.keyboard_arrow_down,
+                      color: Color(0xFF64748B), size: 20),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Progress bar
+        if (section.expanded) ...[
+          const SizedBox(height: 8),
+          _GroupProgressBar(
+            groupName: section.group.name,
+            memberCount: totalMembers,
+            score: groupScore,
+          ),
+        ],
+
+        // Period navigator
+        if (section.expanded && section.isPeriodMode && section.periods.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _buildPeriodNav(section, s),
+          ),
+
+        // Members list
+        if (section.expanded) ...[
+          const SizedBox(height: 8),
+          if (sorted.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(s.noMembers,
+                    style: const TextStyle(
+                        color: Color(0xFF64748B), fontSize: 13)),
+              ),
+            )
+          else
+            ...sorted.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final member = entry.value;
+              final score = _calcScore(
+                  member.id, section.monthlyReports, section.settings);
+              final trend = _trendValues(member.id, section.trendReports,
+                  section.viewMonth, section.viewYear);
+              final isMe = member.id == widget.profile.id;
+              final medal = idx == 0
+                  ? '🥇'
+                  : idx == 1
+                      ? '🥈'
+                      : idx == 2
+                          ? '🥉'
+                          : null;
+
+              return GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => DetailScreen(
+                      profile: member,
+                      groupId: section.group.id,
+                      report: section.monthlyReports[member.id],
+                      weekLabel: WeekUtils.monthLabel(
+                          section.viewMonth, section.viewYear),
+                      isWeekMode: false,
+                      monthReports: section.trendReports.values
+                          .map((m) => m[member.id])
+                          .whereType<IbadatReport>()
+                          .toList(),
+                      periods: section.periods,
+                      initialPeriodIdx: section.periodIdx,
+                    ),
+                  ));
+                },
+                child: _MemberTile(
+                  member: member,
+                  isMe: isMe,
+                  rank: idx,
+                  medal: medal,
+                  score: score,
+                  trend: trend,
+                  report: section.monthlyReports[member.id],
+                ),
+              );
+            }),
+        ],
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildPeriodNav(_GroupSection section, AppStrings s) {
+    final idx = section.periodIdx.clamp(0, section.periods.length - 1);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: idx > 0
+                ? () async {
+                    setState(() => section.periodIdx--);
+                    await _loadSectionReports(section);
+                    if (mounted) setState(() {});
+                  }
+                : null,
+            icon: Icon(Icons.chevron_left,
+                color: idx > 0
+                    ? const Color(0xFFA5B4FC)
+                    : const Color(0xFF334155)),
+          ),
+          Column(
+            children: [
+              Text(
+                section.periods[idx].dateRangeLabelLocalized(s.languageCode),
+                style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14),
+              ),
+              Text(
+                section.periods[idx].label,
+                style:
+                    const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+              ),
+            ],
+          ),
+          IconButton(
+            onPressed: idx < section.periods.length - 1
+                ? () async {
+                    setState(() => section.periodIdx++);
+                    await _loadSectionReports(section);
+                    if (mounted) setState(() {});
+                  }
+                : null,
+            icon: Icon(Icons.chevron_right,
+                color: idx < section.periods.length - 1
+                    ? const Color(0xFFA5B4FC)
+                    : const Color(0xFF334155)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── User view: single group, only own report ─────────────────────────────────
+
+  List<Widget> _buildUserContent(AppStrings s) {
+    final me = _userMembers.where((m) => m.id == widget.profile.id).toList();
+    final score = me.isEmpty
+        ? 0.0
+        : _calcScore(me.first.id, _userMonthlyReports, _userSettings);
+    final trend = _trendValues(
+        widget.profile.id, _userTrendReports, _viewMonth, _viewYear);
+
+    return [
+      // Group badge — tap to see group / switch
+      GestureDetector(
+        onTap: widget.onSwitchGroup,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(40),
+            border: Border.all(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('👥', style: TextStyle(fontSize: 13)),
+              const SizedBox(width: 6),
+              Text(
+                widget.group.name,
+                style: const TextStyle(
+                  color: Color(0xFFA5B4FC),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      _GroupProgressBar(
+        groupName: widget.group.name,
+        memberCount: _userMembers.length,
+        score: score,
+      ),
+
+      // Period / month navigator
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.02),
+          borderRadius: BorderRadius.circular(12),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.04)),
+        ),
+        child: _userPeriods.isNotEmpty
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _userPeriodIdx > 0
+                        ? () {
+                            setState(() => _userPeriodIdx--);
+                            _loadUserData();
+                          }
+                        : null,
+                    icon: Icon(Icons.chevron_left,
+                        color: _userPeriodIdx > 0
+                            ? const Color(0xFFA5B4FC)
+                            : const Color(0xFF334155)),
+                  ),
+                  Column(
+                    children: [
+                      Text(
+                        _userPeriods[_userPeriodIdx
+                                .clamp(0, _userPeriods.length - 1)]
+                            .dateRangeLabelLocalized(s.languageCode),
+                        style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14),
+                      ),
+                      Text(
+                        _userPeriods[_userPeriodIdx
+                                .clamp(0, _userPeriods.length - 1)]
+                            .label,
+                        style: const TextStyle(
+                            color: Color(0xFF64748B), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: _userPeriodIdx < _userPeriods.length - 1
+                        ? () {
+                            setState(() => _userPeriodIdx++);
+                            _loadUserData();
+                          }
+                        : null,
+                    icon: Icon(Icons.chevron_right,
+                        color:
+                            _userPeriodIdx < _userPeriods.length - 1
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF334155)),
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _prevMonth,
+                    icon: const Icon(Icons.chevron_left,
+                        color: Color(0xFFA5B4FC)),
+                  ),
+                  Text(
+                    WeekUtils.monthLabel(_viewMonth, _viewYear),
+                    style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      final now = DateTime.now();
+                      if (_viewYear < now.year ||
+                          (_viewYear == now.year &&
+                              _viewMonth < now.month)) {
+                        _nextMonth();
+                      }
+                    },
+                    icon: Icon(Icons.chevron_right,
+                        color: (_viewYear < DateTime.now().year ||
+                                (_viewYear == DateTime.now().year &&
+                                    _viewMonth < DateTime.now().month))
+                            ? const Color(0xFFA5B4FC)
+                            : const Color(0xFF334155)),
+                  ),
+                ],
+              ),
+      ),
+      const SizedBox(height: 12),
+
+      // My card
+      if (me.isEmpty)
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Text(s.noMembers,
+                style: const TextStyle(
+                    color: Color(0xFF64748B), fontSize: 15)),
+          ),
+        )
+      else
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => DetailScreen(
+                profile: me.first,
+                groupId: widget.group.id,
+                report: _userMonthlyReports[me.first.id],
+                weekLabel:
+                    WeekUtils.monthLabel(_viewMonth, _viewYear),
+                isWeekMode: false,
+                monthReports: _userTrendReports.values
+                    .map((m) => m[me.first.id])
+                    .whereType<IbadatReport>()
+                    .toList(),
+                periods: _userPeriods,
+                initialPeriodIdx: _userPeriodIdx,
+              ),
+            ));
+          },
+          child: _MemberTile(
+            member: me.first,
+            isMe: true,
+            rank: 0,
+            medal: null,
+            score: score,
+            trend: trend,
+            report: _userMonthlyReports[me.first.id],
+            showRank: false,
+          ),
+        ),
+    ];
+  }
 }
+
+// ── Reusable member tile ───────────────────────────────────────────────────────
+
+class _MemberTile extends StatelessWidget {
+  final IbadatProfile member;
+  final bool isMe;
+  final int rank;
+  final String? medal;
+  final double score;
+  final List<int> trend;
+  final IbadatReport? report;
+  final bool showRank;
+
+  const _MemberTile({
+    required this.member,
+    required this.isMe,
+    required this.rank,
+    required this.medal,
+    required this.score,
+    required this.trend,
+    required this.report,
+    this.showRank = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final catColor =
+        IbadatCategory.all[rank % IbadatCategory.all.length].color;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: rank == 0
+            ? LinearGradient(colors: [
+                const Color(0xFFFBBF24).withValues(alpha: 0.08),
+                const Color(0xFFF59E0B).withValues(alpha: 0.04),
+              ])
+            : null,
+        color: rank == 0 ? null : Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isMe
+              ? const Color(0xFF6366F1).withValues(alpha: 0.3)
+              : rank == 0
+                  ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Rank
+          if (showRank)
+            SizedBox(
+              width: 28,
+              child: medal != null
+                  ? Text(medal!, style: const TextStyle(fontSize: 18))
+                  : Text(
+                      '${rank + 1}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+            ),
+
+          // Avatar
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [
+                catColor.withValues(alpha: 0.4),
+                catColor.withValues(alpha: 0.2),
+              ]),
+              borderRadius: BorderRadius.circular(21),
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Text(
+                    member.displayName[0].toUpperCase(),
+                    style: TextStyle(
+                      color: catColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+                if (member.isAdmin)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 3, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child:
+                          const Text('👑', style: TextStyle(fontSize: 8)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // Name + chips
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      member.displayName.split(' ').first,
+                      style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1)
+                              .withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          s.youLabel,
+                          style: const TextStyle(
+                            color: Color(0xFFA5B4FC),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                _CategoryChips(report: report),
+              ],
+            ),
+          ),
+
+          // Ring + trend
+          Column(
+            children: [
+              RingIndicator(value: score, size: 46),
+              const SizedBox(height: 3),
+              MiniBarChart(values: trend, color: const Color(0xFF6366F1)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Group progress bar ────────────────────────────────────────────────────────
 
 class _GroupProgressBar extends StatelessWidget {
   final String groupName;
@@ -658,13 +1128,10 @@ class _GroupProgressBar extends StatelessWidget {
     }
 
     final barColor = pct >= 70
-        ? const LinearGradient(
-            colors: [Color(0xFF10B981), Color(0xFF34D399)])
+        ? const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF34D399)])
         : pct >= 40
-            ? const LinearGradient(
-                colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)])
-            : const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF818CF8)]);
+            ? const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)])
+            : const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF818CF8)]);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -677,8 +1144,7 @@ class _GroupProgressBar extends StatelessWidget {
           ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.15)),
+        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.15)),
       ),
       child: Column(
         children: [
@@ -700,8 +1166,7 @@ class _GroupProgressBar extends StatelessWidget {
                     ),
                     Text(
                       '$groupName · $memberCount ${s.memberCount}',
-                      style: const TextStyle(
-                          color: Color(0xFF94A3B8), fontSize: 11),
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
                     ),
                   ],
                 ),
@@ -761,6 +1226,8 @@ class _GroupProgressBar extends StatelessWidget {
   }
 }
 
+// ── Category chips ─────────────────────────────────────────────────────────────
+
 class _CategoryChips extends StatelessWidget {
   final IbadatReport? report;
 
@@ -792,4 +1259,3 @@ class _CategoryChips extends StatelessWidget {
     );
   }
 }
-

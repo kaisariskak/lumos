@@ -33,11 +33,11 @@ const List<AppAccent> appAccents = [
     gradientMid: Color(0xFF0C2A1F),
   ),
   AppAccent(
-    name: 'Rose',
-    accent: Color(0xFFEC4899),
-    accentDark: Color(0xFFDB2777),
-    accentLight: Color(0xFFF9A8D4),
-    gradientMid: Color(0xFF2A0C1E),
+    name: 'Violet',
+    accent: Color(0xFF8B5CF6),
+    accentDark: Color(0xFF7C3AED),
+    accentLight: Color(0xFFC4B5FD),
+    gradientMid: Color(0xFF1A0A3A),
   ),
   AppAccent(
     name: 'Amber',

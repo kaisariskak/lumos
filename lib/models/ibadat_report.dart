@@ -2,6 +2,7 @@ class IbadatReport {
   final String? id;
   final String userId;
   final String groupId;
+  final String? periodId;
   final int month;
   final int year;
   int quranPages;
@@ -21,6 +22,7 @@ class IbadatReport {
     this.id,
     required this.userId,
     required this.groupId,
+    this.periodId,
     required this.month,
     required this.year,
     this.quranPages = 0,
@@ -42,6 +44,7 @@ class IbadatReport {
       id: json['id'] as String?,
       userId: json['user_id'] as String,
       groupId: json['group_id'] as String,
+      periodId: json['period_id'] as String?,
       month: json['month'] as int,
       year: json['year'] as int,
       quranPages: json['quran_pages'] as int? ?? 0,
@@ -67,6 +70,7 @@ class IbadatReport {
     return {
       'user_id': userId,
       'group_id': groupId,
+      if (periodId != null) 'period_id': periodId,
       'month': month,
       'year': year,
       'quran_pages': quranPages,
@@ -119,6 +123,7 @@ class IbadatReport {
       id: id,
       userId: userId,
       groupId: groupId,
+      periodId: periodId,
       month: month,
       year: year,
       quranPages: quranPages,

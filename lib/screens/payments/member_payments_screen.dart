@@ -12,6 +12,34 @@ import '../../repositories/payment_repository.dart';
 import '../../theme/accent_provider.dart';
 import 'add_payment_dialog.dart';
 
+class _ThousandSeparator extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue next) {
+    final digits = next.text.replaceAll(' ', '');
+    if (digits.isEmpty) return next.copyWith(text: '');
+    final buf = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(' ');
+      buf.write(digits[i]);
+    }
+    final formatted = buf.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+String _fmtAmount(double v) {
+  final s = v.toStringAsFixed(0);
+  final buf = StringBuffer();
+  for (int i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
+    buf.write(s[i]);
+  }
+  return buf.toString();
+}
+
 class MemberPaymentsScreen extends StatefulWidget {
   final IbadatProfile member;
   final String groupId;
@@ -65,7 +93,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
   Future<void> _editFixedAmount() async {
     final ctrl = TextEditingController(
         text: _fixedMonthlyAmount > 0
-            ? _fixedMonthlyAmount.toStringAsFixed(0)
+            ? _fmtAmount(_fixedMonthlyAmount)
             : '');
     final s = S.of(context);
     final result = await showDialog<double>(
@@ -82,7 +110,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly, _ThousandSeparator()],
           autofocus: true,
           style: const TextStyle(
               color: Color(0xFFE2E8F0),
@@ -123,7 +151,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
           ),
           TextButton(
             onPressed: () {
-              final v = double.tryParse(ctrl.text.trim()) ?? 0;
+              final v = double.tryParse(ctrl.text.trim().replaceAll(' ', '')) ?? 0;
               Navigator.pop(context, v);
             },
             child: Text(s.save,
@@ -423,6 +451,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
           ? FloatingActionButton(
               onPressed: () => _addOrEdit(),
               backgroundColor: AccentProvider.instance.current.accent,
+              shape: const CircleBorder(),
               child: const Icon(Icons.add, color: Colors.white),
             )
           : null,

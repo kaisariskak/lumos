@@ -80,8 +80,8 @@ class IbadatCategory {
       unit: 'рет',
       icon: '🌹',
       color: Color(0xFFE11D48),
-      weekMax: 1000,
-      monthMax: 4000,
+      weekMax: 10000,
+      monthMax: 40000,
     ),
     IbadatCategory(
       key: 'istighfar_count',
@@ -94,7 +94,7 @@ class IbadatCategory {
     ),
     IbadatCategory(
       key: 'tahajjud_count',
-      label: 'Тəжаджуд',
+      label: 'Таһажуд',
       unit: 'рет',
       icon: '🌙',
       color: Color(0xFF0EA5E9),

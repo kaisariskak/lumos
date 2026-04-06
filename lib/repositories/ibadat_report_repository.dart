@@ -24,6 +24,23 @@ class IbadatReportRepository {
     return IbadatReport.fromJson(data);
   }
 
+  /// Get report by period_id for a specific user
+  Future<IbadatReport?> getReportByPeriod({
+    required String userId,
+    required String groupId,
+    required String periodId,
+  }) async {
+    final data = await _client
+        .from('ibadat_reports')
+        .select()
+        .eq('user_id', userId)
+        .eq('group_id', groupId)
+        .eq('period_id', periodId)
+        .maybeSingle();
+    if (data == null) return null;
+    return IbadatReport.fromJson(data);
+  }
+
   Future<List<IbadatReport>> getGroupReports({
     required String groupId,
     required int month,
@@ -38,21 +55,49 @@ class IbadatReportRepository {
     return (data as List).map((e) => IbadatReport.fromJson(e)).toList();
   }
 
+  /// Get all reports for a group by period_id
+  Future<List<IbadatReport>> getGroupReportsByPeriod({
+    required String groupId,
+    required String periodId,
+  }) async {
+    final data = await _client
+        .from('ibadat_reports')
+        .select()
+        .eq('group_id', groupId)
+        .eq('period_id', periodId);
+    return (data as List).map((e) => IbadatReport.fromJson(e)).toList();
+  }
+
   /// UPSERT report — creates or updates
   Future<IbadatReport> upsertReport(IbadatReport report) async {
     final payload = {
       ...report.toJson(),
       'updated_at': DateTime.now().toIso8601String(),
     };
+    // If period_id is set — conflict on period, otherwise on month/year
+    final onConflict = report.periodId != null
+        ? 'user_id,group_id,period_id'
+        : 'user_id,group_id,month,year';
     final data = await _client
         .from('ibadat_reports')
-        .upsert(
-          payload,
-          onConflict: 'user_id,group_id,month,year',
-        )
+        .upsert(payload, onConflict: onConflict)
         .select()
         .single();
     return IbadatReport.fromJson(data);
+  }
+
+  /// Returns true if any reports exist for the given period_id
+  Future<bool> hasReportsForPeriod({
+    required String groupId,
+    required String periodId,
+  }) async {
+    final data = await _client
+        .from('ibadat_reports')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('period_id', periodId)
+        .limit(1);
+    return (data as List).isNotEmpty;
   }
 
   /// Returns last N months of reports for a user (for trend chart)
