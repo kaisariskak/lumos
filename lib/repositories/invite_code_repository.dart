@@ -20,10 +20,10 @@ class InviteCodeRepository {
     return '$prefix-$part';
   }
 
-  /// Super-admin generates an ADMIN invite code (valid for 30 days).
+  /// Super-admin generates an ADMIN invite code (valid for 7 days, one-time).
   Future<InviteCode> generateAdminCode({required String createdBy}) async {
     final code = _generateCode('ADM');
-    final expiresAt = DateTime.now().add(const Duration(days: 30));
+    final expiresAt = DateTime.now().add(const Duration(days: 7));
     final data = await _client
         .from('ibadat_invite_codes')
         .insert({
@@ -39,13 +39,13 @@ class InviteCodeRepository {
     return InviteCode.fromJson(data);
   }
 
-  /// Admin generates a USER invite code for their group (valid for 30 days).
+  /// Admin generates a USER invite code for their group (valid for 24 hours).
   Future<InviteCode> generateUserCode({
     required String groupId,
     required String createdBy,
   }) async {
     final code = _generateCode('USR');
-    final expiresAt = DateTime.now().add(const Duration(days: 30));
+    final expiresAt = DateTime.now().add(const Duration(hours: 24));
     final data = await _client
         .from('ibadat_invite_codes')
         .insert({
@@ -75,6 +75,7 @@ class InviteCodeRepository {
 
     final invite = InviteCode.fromJson(data);
     if (invite.isExpired) throw InviteCodeExpiredException();
+    if (invite.isUsed) throw InviteCodeUsedException();
 
     return invite;
   }

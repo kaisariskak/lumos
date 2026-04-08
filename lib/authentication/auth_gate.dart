@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
+import '../repositories/invite_code_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
@@ -156,6 +157,7 @@ class _AuthGateState extends State<AuthGate> {
 
     try {
       final profileRepo = ProfileRepository(Supabase.instance.client);
+      final codeRepo = InviteCodeRepository(Supabase.instance.client);
       final email = user.email ?? '';
 
       if (_profile == null) {
@@ -192,6 +194,9 @@ class _AuthGateState extends State<AuthGate> {
           await profileRepo.updateCurrentGroup(_profile!.id, code.groupId);
         }
       }
+
+      // Mark code as used (ADMIN codes are one-time; USER codes are 24h but also mark used)
+      await codeRepo.markUsed(code.id);
 
       // Reload profile to enter the app
       await _loadProfile();

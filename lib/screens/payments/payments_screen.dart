@@ -69,9 +69,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         _settingsRepo.getSettingsForGroup(widget.group.id),
       ]);
 
-      final members = results[0] as List<IbadatProfile>;
+      final allMembers = results[0] as List<IbadatProfile>;
       final allPayments = results[1] as List<IbadatPayment>;
       final settings = results[2] as Map<String, IbadatMemberSettings>;
+
+      // Финансист видит всех участников группы кроме себя
+      final members = allMembers
+          .where((m) => m.id != widget.profile.id)
+          .toList();
 
       final map = <String, List<IbadatPayment>>{};
       for (final m in members) {
