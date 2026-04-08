@@ -200,6 +200,14 @@ class AppStrings {
   final String currentWeekLabel;
   final String weeksAgoSuffix;
 
+  // ── PIN ────────────────────────────────────────────────
+  final String pinCode;
+  final String pinEnabled;
+  final String pinDisabled;
+  final String pinSetup;
+  final String pinChange;
+  final String pinDisable;
+
   const AppStrings({
     required this.languageCode,
     required this.appTitle,
@@ -373,6 +381,12 @@ class AppStrings {
     required this.memberRoleLabel,
     required this.currentWeekLabel,
     required this.weeksAgoSuffix,
+    required this.pinCode,
+    required this.pinEnabled,
+    required this.pinDisabled,
+    required this.pinSetup,
+    required this.pinChange,
+    required this.pinDisable,
   });
 }
 
@@ -560,6 +574,12 @@ const _kk = AppStrings(
   memberRoleLabel: 'Мүше',
   currentWeekLabel: 'Ағымдағы апта',
   weeksAgoSuffix: ' апта бұрын',
+  pinCode: 'PIN код',
+  pinEnabled: 'Қосулы',
+  pinDisabled: 'Өшірулі',
+  pinSetup: 'PIN орнату',
+  pinChange: 'PIN өзгерту',
+  pinDisable: 'PIN өшіру',
 );
 
 // ── Russian strings ────────────────────────────────────────────────────────
@@ -746,6 +766,12 @@ const _ru = AppStrings(
   memberRoleLabel: 'Участник',
   currentWeekLabel: 'Текущая неделя',
   weeksAgoSuffix: ' нед. назад',
+  pinCode: 'PIN-код',
+  pinEnabled: 'Включён',
+  pinDisabled: 'Выключен',
+  pinSetup: 'Установить PIN',
+  pinChange: 'Изменить PIN',
+  pinDisable: 'Отключить PIN',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────

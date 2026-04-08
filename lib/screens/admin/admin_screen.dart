@@ -17,6 +17,8 @@ import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../services/pin_service.dart';
+import '../pin/pin_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   final IbadatProfile profile;
@@ -65,6 +67,7 @@ class _AdminScreenState extends State<AdminScreen> {
   InviteCode? _adminSelectedCode;   // активный код выбранной группы
 
   bool _isLoading = true;
+  bool _hasPin = false;
   InviteCode? _activeUserCode;
   InviteCode? _activeAdminCode;
   bool _generatingCode = false;
@@ -97,6 +100,32 @@ class _AdminScreenState extends State<AdminScreen> {
       _settingsCtrls[cat.key] = TextEditingController();
     }
     _loadData();
+    _loadPinState();
+  }
+
+  Future<void> _loadPinState() async {
+    final has = await PinService.hasPin();
+    if (mounted) setState(() => _hasPin = has);
+  }
+
+  Future<void> _onSetPin() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PinScreen(
+          isSetup: true,
+          onSuccess: () {
+            Navigator.of(context).pop();
+            _loadPinState();
+          },
+          onCancel: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onDisablePin() async {
+    await PinService.clearPin();
+    _loadPinState();
   }
 
   @override
@@ -1028,6 +1057,8 @@ class _AdminScreenState extends State<AdminScreen> {
       const SizedBox(height: 16),
       _buildColorPicker(),
       const SizedBox(height: 16),
+      _buildPinCard(context),
+      const SizedBox(height: 16),
 
       // Logout
       _buildLogoutButton(),
@@ -1487,6 +1518,8 @@ class _AdminScreenState extends State<AdminScreen> {
       _buildLanguageSwitcher(),
       const SizedBox(height: 16),
       _buildColorPicker(),
+      const SizedBox(height: 16),
+      _buildPinCard(context),
       const SizedBox(height: 16),
       _buildLogoutButton(),
     ];
@@ -2909,6 +2942,97 @@ class _AdminScreenState extends State<AdminScreen> {
                 );
               }),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPinCard(BuildContext context) {
+    final s = S.of(context);
+    final accent = AccentProvider.instance.current.accent;
+    final accentLight = AccentProvider.instance.current.accentLight;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🔐', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 8),
+              Text(
+                s.pinCode,
+                style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _hasPin ? accent.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _hasPin ? s.pinEnabled : s.pinDisabled,
+                  style: TextStyle(
+                    color: _hasPin ? accentLight : const Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _onSetPin,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        _hasPin ? s.pinChange : s.pinSetup,
+                        style: TextStyle(color: accentLight, fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_hasPin) ...[
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _onDisablePin,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          s.pinDisable,
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),

@@ -65,6 +65,7 @@ class IbadatGroupRepository {
     }
   }
 
+
   Future<void> deleteGroup(String groupId) async {
     // Delete all FK-dependent records first
     await _client.from('ibadat_reports').delete().eq('group_id', groupId);

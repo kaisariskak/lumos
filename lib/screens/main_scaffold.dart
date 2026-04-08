@@ -73,8 +73,7 @@ class _MainScaffoldState extends State<MainScaffold>
       final repo = IbadatGroupRepository(Supabase.instance.client);
       final group = await repo.getGroupById(widget.profile.currentGroupId!);
       if (!mounted) return;
-      final isFinancier =
-          group != null && group.financierId == widget.profile.id;
+      final isFinancier = group != null && group.financierId == widget.profile.id;
       final tabCount = 2 + (isFinancier ? 1 : 0) + 1;
       setState(() {
         _group = group;
@@ -154,7 +153,7 @@ class _MainScaffoldState extends State<MainScaffold>
                       : isAdmin
                           ? const _AdminNoGroupHint()
                           : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
-                  if (isFinancier)
+                  if (isFinancier && group != null)
                     PaymentsScreen(
                       profile: widget.profile,
                       group: group,
@@ -188,7 +187,6 @@ class _MainScaffoldState extends State<MainScaffold>
               groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
                 setState(() => _tabIndex = i);
-                _loadGroup();
               },
             ),
     );

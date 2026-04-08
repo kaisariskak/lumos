@@ -4,7 +4,9 @@ import '../../l10n/app_strings.dart';
 import '../../l10n/locale_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
+import '../../services/pin_service.dart';
 import '../../theme/accent_provider.dart';
+import '../pin/pin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final IbadatProfile profile;
@@ -25,10 +27,13 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  bool _hasPin = false;
+
   @override
   void initState() {
     super.initState();
     AccentProvider.instance.addListener(_rebuild);
+    _loadPinState();
   }
 
   @override
@@ -39,6 +44,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _rebuild() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadPinState() async {
+    final has = await PinService.hasPin();
+    if (mounted) setState(() => _hasPin = has);
+  }
+
+  Future<void> _onSetPin() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PinScreen(
+          isSetup: true,
+          onSuccess: () {
+            Navigator.of(context).pop();
+            _loadPinState();
+          },
+          onCancel: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _onDisablePin() async {
+    await PinService.clearPin();
+    _loadPinState();
   }
 
   @override
@@ -230,6 +260,112 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             .setLocale(const Locale('ru')),
                       ),
                     ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // PIN section
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text('🔐', style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 8),
+                    Text(
+                      s.pinCode,
+                      style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _hasPin
+                            ? AccentProvider.instance.current.accent.withValues(alpha: 0.15)
+                            : Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _hasPin ? s.pinEnabled : s.pinDisabled,
+                        style: TextStyle(
+                          color: _hasPin
+                              ? AccentProvider.instance.current.accentLight
+                              : const Color(0xFF64748B),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: _onSetPin,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AccentProvider.instance.current.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AccentProvider.instance.current.accent.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _hasPin ? s.pinChange : s.pinSetup,
+                              style: TextStyle(
+                                color: AccentProvider.instance.current.accentLight,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_hasPin) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _onDisablePin,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                            ),
+                            child: Center(
+                              child: Text(
+                                s.pinDisable,
+                                style: const TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

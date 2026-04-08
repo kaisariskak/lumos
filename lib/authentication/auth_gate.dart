@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../l10n/app_strings.dart';
@@ -11,6 +10,8 @@ import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
 import '../screens/invite_code/invite_code_screen.dart';
 import '../screens/main_scaffold.dart';
+import '../screens/pin/pin_screen.dart';
+import '../services/pin_service.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -21,13 +22,11 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   late final StreamSubscription<AuthState> _authSub;
-  final _localAuth = LocalAuthentication();
-
-  bool _biometricPassed = false;
   bool _checkingBiometric = true;
   bool _showGroupPicker = false;
   bool _showInviteCode = false;
   bool _profileError = false;
+  bool _pinRequired = false;
 
   IbadatProfile? _profile;
 
@@ -39,15 +38,12 @@ class _AuthGateState extends State<AuthGate> {
         Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       if (data.event == AuthChangeEvent.signedIn) {
-        setState(() {
-          _biometricPassed = true;
-          _checkingBiometric = false;
-        });
+        setState(() => _checkingBiometric = false);
         _loadProfile();
       } else if (data.event == AuthChangeEvent.signedOut) {
         setState(() {
-          _biometricPassed = false;
           _checkingBiometric = false;
+          _pinRequired = false;
           _profile = null;
           _showGroupPicker = false;
           _showInviteCode = false;
@@ -64,41 +60,23 @@ class _AuthGateState extends State<AuthGate> {
       setState(() => _checkingBiometric = false);
       return;
     }
-    await _authenticate();
-    if (_biometricPassed) await _loadProfile();
+
+    final hasPin = await PinService.hasPin();
+    if (hasPin) {
+      setState(() {
+        _pinRequired = true;
+        _checkingBiometric = false;
+      });
+      return;
+    }
+
+    setState(() => _checkingBiometric = false);
+    await _loadProfile();
   }
 
-  Future<void> _authenticate() async {
-    try {
-      final canCheck = await _localAuth.canCheckBiometrics ||
-          await _localAuth.isDeviceSupported();
-
-      if (!canCheck) {
-        setState(() {
-          _biometricPassed = true;
-          _checkingBiometric = false;
-        });
-        return;
-      }
-
-      final ok = await _localAuth.authenticate(
-        localizedReason: 'Қолданбаға кіруді растаңыз',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: false,
-        ),
-      );
-
-      setState(() {
-        _biometricPassed = ok;
-        _checkingBiometric = false;
-      });
-    } catch (_) {
-      setState(() {
-        _biometricPassed = true;
-        _checkingBiometric = false;
-      });
-    }
+  void _onPinSuccess() {
+    setState(() => _pinRequired = false);
+    _loadProfile();
   }
 
   Future<void> _loadProfile() async {
@@ -251,48 +229,11 @@ class _AuthGateState extends State<AuthGate> {
     // No session → sign in
     if (session == null) return const IbadatAuthorization();
 
-    // Session but biometric not passed
-    if (!_biometricPassed) {
-      final s = S.of(context);
-      return Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('🔒', style: TextStyle(fontSize: 72)),
-              const SizedBox(height: 20),
-              Text(
-                s.appLocked,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _authenticate,
-                icon: const Icon(Icons.fingerprint),
-                label: Text(s.unlock),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _logout,
-                child: Text(s.switchAccount,
-                    style: const TextStyle(color: Color(0xFF64748B))),
-              ),
-            ],
-          ),
-        ),
+    // PIN required
+    if (_pinRequired) {
+      return PinScreen(
+        onSuccess: _onPinSuccess,
+        onCancel: _logout,
       );
     }
 

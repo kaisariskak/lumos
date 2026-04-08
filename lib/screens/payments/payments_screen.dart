@@ -10,6 +10,7 @@ import '../../repositories/ibadat_group_repository.dart';
 import '../../repositories/member_settings_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../theme/accent_provider.dart';
 import 'member_payments_screen.dart';
 
 class PaymentsScreen extends StatefulWidget {
@@ -45,7 +46,18 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     _groupRepo = IbadatGroupRepository(client);
     _settingsRepo = MemberSettingsRepository(client);
     _profileRepo = ProfileRepository(client);
+    AccentProvider.instance.addListener(_onAccentChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    AccentProvider.instance.removeListener(_onAccentChanged);
+    super.dispose();
+  }
+
+  void _onAccentChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -151,6 +163,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current.accent;
+    final accentLight = AccentProvider.instance.current.accentLight;
+    final accentDark = AccentProvider.instance.current.accentDark;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 56, 16, 100),
       child: Column(
@@ -161,13 +177,11 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             child: Column(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                    color: accent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(40),
-                    border: Border.all(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.2)),
+                    border: Border.all(color: accent.withValues(alpha: 0.2)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -176,8 +190,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       const SizedBox(width: 6),
                       Text(
                         '${widget.profile.displayName} · ${s.financierLabel}',
-                        style: const TextStyle(
-                          color: Color(0xFF6EE7B7),
+                        style: TextStyle(
+                          color: accentLight,
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
@@ -187,8 +201,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 ),
                 const SizedBox(height: 10),
                 ShaderMask(
-                  shaderCallback: (b) => const LinearGradient(
-                    colors: [Color(0xFF6EE7B7), Color(0xFF10B981)],
+                  shaderCallback: (b) => LinearGradient(
+                    colors: [accentLight, accent],
                   ).createShader(b),
                   child: Text(
                     s.paymentsTitle,
@@ -204,16 +218,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           const SizedBox(height: 20),
 
           if (_isLoading)
-            const Center(
-                child:
-                    CircularProgressIndicator(color: Color(0xFF10B981)))
+            Center(child: CircularProgressIndicator(color: accent))
           else ...[
             // Summary card
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF065F46), Color(0xFF064E3B)],
+                gradient: LinearGradient(
+                  colors: [accentDark.withValues(alpha: 0.9), accentDark],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -337,7 +349,7 @@ class _SummaryItem extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 fontSize: 16)),
         Text(label,
-            style: const TextStyle(color: Color(0xFF6EE7B7), fontSize: 10)),
+            style: TextStyle(color: AccentProvider.instance.current.accentLight, fontSize: 10)),
       ],
     );
   }
