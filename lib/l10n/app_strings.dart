@@ -207,6 +207,11 @@ class AppStrings {
   final String pinSetup;
   final String pinChange;
   final String pinDisable;
+  final String pinEnter;
+  final String pinNewCode;
+  final String pinConfirm;
+  final String pinWrong;
+  final String pinMismatch;
 
   const AppStrings({
     required this.languageCode,
@@ -387,6 +392,11 @@ class AppStrings {
     required this.pinSetup,
     required this.pinChange,
     required this.pinDisable,
+    required this.pinEnter,
+    required this.pinNewCode,
+    required this.pinConfirm,
+    required this.pinWrong,
+    required this.pinMismatch,
   });
 }
 
@@ -580,6 +590,11 @@ const _kk = AppStrings(
   pinSetup: 'PIN орнату',
   pinChange: 'PIN өзгерту',
   pinDisable: 'PIN өшіру',
+  pinEnter: 'PIN кодты енгізіңіз',
+  pinNewCode: 'Жаңа PIN код',
+  pinConfirm: 'PIN кодты растаңыз',
+  pinWrong: 'Қате PIN код',
+  pinMismatch: 'PIN коды сәйкес келмеді',
 );
 
 // ── Russian strings ────────────────────────────────────────────────────────
@@ -772,6 +787,11 @@ const _ru = AppStrings(
   pinSetup: 'Установить PIN',
   pinChange: 'Изменить PIN',
   pinDisable: 'Отключить PIN',
+  pinEnter: 'Введите PIN-код',
+  pinNewCode: 'Новый PIN-код',
+  pinConfirm: 'Подтвердите PIN-код',
+  pinWrong: 'Неверный PIN-код',
+  pinMismatch: 'PIN-коды не совпадают',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────

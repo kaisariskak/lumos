@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/pin_service.dart';
 import '../../theme/accent_provider.dart';
+import '../../l10n/app_strings.dart';
 
 enum PinMode { enter, setup, confirm }
 
@@ -32,7 +33,8 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
   PinMode _mode = PinMode.enter;
   String _pin = '';
   String _firstPin = '';
-  String? _error;
+  // 'wrong' | 'mismatch' | null
+  String? _errorKey;
 
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -61,7 +63,7 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
     if (_pin.length >= _pinLength) return;
     setState(() {
       _pin += digit;
-      _error = null;
+      _errorKey = null;
     });
     if (_pin.length == _pinLength) {
       Future.delayed(const Duration(milliseconds: 100), _submit);
@@ -82,7 +84,7 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
         _shake();
         setState(() {
           _pin = '';
-          _error = _errorText;
+          _errorKey = 'wrong';
         });
       }
     } else if (_mode == PinMode.setup) {
@@ -101,7 +103,7 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
           _pin = '';
           _firstPin = '';
           _mode = PinMode.setup;
-          _error = _mismatchText;
+          _errorKey = 'mismatch';
         });
       }
     }
@@ -111,23 +113,25 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
     _shakeController.forward(from: 0);
   }
 
-  String get _titleText {
-    switch (_mode) {
-      case PinMode.enter:
-        return 'PIN код енгізіңіз';
-      case PinMode.setup:
-        return 'Жаңа PIN код';
-      case PinMode.confirm:
-        return 'PIN кодты растаңыз';
-    }
-  }
-
-  String get _errorText => 'Қате PIN код';
-  String get _mismatchText => 'PIN коды сәйкес келмеді';
-
   @override
   Widget build(BuildContext context) {
     final accent = AccentProvider.instance.current.accent;
+    final s = S.of(context);
+
+    String titleText;
+    switch (_mode) {
+      case PinMode.enter:
+        titleText = s.pinEnter;
+        break;
+      case PinMode.setup:
+        titleText = s.pinNewCode;
+        break;
+      case PinMode.confirm:
+        titleText = s.pinConfirm;
+        break;
+    }
+
+    final errorText = _errorKey == 'mismatch' ? s.pinMismatch : _errorKey == 'wrong' ? s.pinWrong : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -167,7 +171,7 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
 
             // Title
             Text(
-              _titleText,
+              titleText,
               style: const TextStyle(
                 color: Color(0xFFE2E8F0),
                 fontSize: 20,
@@ -179,10 +183,10 @@ class _PinScreenState extends State<PinScreen> with SingleTickerProviderStateMix
             // Error
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: _error != null
+              child: errorText != null
                   ? Text(
-                      _error!,
-                      key: ValueKey(_error),
+                      errorText,
+                      key: ValueKey(errorText),
                       style: const TextStyle(color: Color(0xFFEF4444), fontSize: 13),
                     )
                   : const SizedBox(height: 16),

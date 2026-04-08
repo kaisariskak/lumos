@@ -2229,7 +2229,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                 fontSize: 14)),
                         Text(
                           hasPeriod
-                              ? periods.map((p) => p.dateRangeLabelLocalized(s.languageCode)).join(', ')
+                              ? periods.last.dateRangeLabelLocalized(s.languageCode)
                               : s.selectStartDate,
                           style: const TextStyle(
                               color: Color(0xFF64748B), fontSize: 11),
