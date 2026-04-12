@@ -119,15 +119,6 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // Subtitle
-                Text(
-                  s.inviteCodeSubtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 14,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
                 const SizedBox(height: 32),
 
                 // Code input
@@ -144,7 +135,7 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                   maxLength: 10,
                   decoration: InputDecoration(
                     counterText: '',
-                    hintText: 'ADM-XXXXXX',
+                    hintText: '',
                     hintStyle: const TextStyle(
                       color: Color(0xFF334155),
                       letterSpacing: 2,

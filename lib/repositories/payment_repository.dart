@@ -47,4 +47,17 @@ class PaymentRepository {
   Future<void> deletePayment(int id) async {
     await _client.from('ibadat_payments').delete().eq('id', id);
   }
+
+  /// Move all payments of a user from one group to another
+  Future<void> moveUserPayments({
+    required String userId,
+    required String fromGroupId,
+    required String toGroupId,
+  }) async {
+    await _client
+        .from('ibadat_payments')
+        .update({'group_id': toGroupId})
+        .eq('profile_id', userId)
+        .eq('group_id', fromGroupId);
+  }
 }

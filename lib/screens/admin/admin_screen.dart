@@ -15,6 +15,7 @@ import '../../repositories/ibadat_group_repository.dart';
 import '../../repositories/ibadat_group_settings_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
+import '../../repositories/payment_repository.dart';
 import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../services/pin_service.dart';
@@ -45,6 +46,7 @@ class _AdminScreenState extends State<AdminScreen> {
   late final ProfileRepository _profileRepo;
   late final IbadatPeriodRepository _periodRepo;
   late final IbadatReportRepository _reportRepo;
+  late final PaymentRepository _paymentRepo;
   late final InviteCodeRepository _codeRepo;
   late final IbadatGroupSettingsRepository _settingsRepo;
 
@@ -84,6 +86,11 @@ class _AdminScreenState extends State<AdminScreen> {
   final Set<String> _expandedGroups = {};
   String? _deletingPeriodId; // id периода, который проверяется/удаляется
 
+  // Admin's own personal periods (separate from group periods)
+  List<IbadatPeriod> _adminPersonalPeriods = [];
+  DateTime? _adminPeriodStart;
+  DateTime? _adminPeriodEnd;
+
   bool get _isSuperAdmin => widget.profile.isSuperAdmin;
 
   @override
@@ -94,6 +101,7 @@ class _AdminScreenState extends State<AdminScreen> {
     _profileRepo = ProfileRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
     _reportRepo = IbadatReportRepository(client);
+    _paymentRepo = PaymentRepository(client);
     _codeRepo = InviteCodeRepository(client);
     _settingsRepo = IbadatGroupSettingsRepository(client);
     for (final cat in IbadatCategory.all) {
@@ -150,7 +158,7 @@ class _AdminScreenState extends State<AdminScreen> {
         final Map<String, List<IbadatPeriod>> periodsMap = {};
         for (final g in groups) {
           membersMap[g.id] = await _groupRepo.getGroupMembers(g.id, adminId: g.adminId);
-          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id);
+          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id, includePersonal: false);
         }
         setState(() {
           _myAdmins = admins;
@@ -171,14 +179,19 @@ class _AdminScreenState extends State<AdminScreen> {
         final Map<String, List<IbadatProfile>> membersMap = {};
         final Map<String, List<IbadatPeriod>> periodsMap = {};
         for (final g in myGroups) {
-          membersMap[g.id] = await _groupRepo.getGroupMembers(g.id, adminId: g.adminId);
-          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id);
+          final all = await _groupRepo.getGroupMembers(g.id);
+          membersMap[g.id] = all.where((m) => m.id != widget.profile.id).toList();
+          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id, includePersonal: false);
         }
+        // Load admin's personal periods (is_personal = true)
+        final personalPeriods = await _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
+
         setState(() {
           _myGroups = myGroups;
           _allGroups = myGroups;
           _groupMembers = membersMap;
           _groupPeriods = periodsMap;
+          _adminPersonalPeriods = personalPeriods;
           // Для совместимости оставляем _members для текущей группы
           final currentGroup = widget.group ?? _localGroup;
           _members = currentGroup != null ? (membersMap[currentGroup.id] ?? []) : [];
@@ -518,10 +531,6 @@ class _AdminScreenState extends State<AdminScreen> {
     try {
       final group = await _groupRepo.createGroup(name, widget.profile.id);
 
-      // Всегда привязываем новую группу как текущую (нужно для RLS при создании кода)
-      await ProfileRepository(Supabase.instance.client)
-          .updateCurrentGroup(widget.profile.id, group.id);
-
       if (_newGroupPeriodStart != null) {
         final end = _newGroupPeriodEnd ?? _newGroupPeriodStart!.add(const Duration(days: 6));
         final s = _newGroupPeriodStart!;
@@ -685,6 +694,40 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _createAdminPersonalPeriod() async {
+    if (_adminPeriodStart == null) return;
+    final groupId = _adminSelectedGroup?.id ?? widget.profile.currentGroupId;
+    if (groupId == null) return;
+    final end = _adminPeriodEnd ?? _adminPeriodStart!.add(const Duration(days: 6));
+    final s = _adminPeriodStart!;
+    final label = '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
+    try {
+      await _periodRepo.createPeriod(
+        groupId: groupId,
+        label: label,
+        startDate: s,
+        endDate: end,
+        createdBy: widget.profile.id,
+        isPersonal: true,
+      );
+      setState(() {
+        _adminPeriodStart = null;
+        _adminPeriodEnd = null;
+      });
+      await _loadData();
+      widget.onGroupChanged?.call();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(S.of(context).periodCreated),
+        backgroundColor: const Color(0xFF059669),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+    }
+  }
+
   /// Проверяет отчёты и удаляет период, если их нет
   Future<void> _tryDeletePeriod(IbadatPeriod period) async {
     setState(() => _deletingPeriodId = period.id);
@@ -705,6 +748,7 @@ class _AdminScreenState extends State<AdminScreen> {
       }
       await _periodRepo.deletePeriod(period.id);
       await _loadData();
+      widget.onGroupChanged?.call();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1498,6 +1542,10 @@ class _AdminScreenState extends State<AdminScreen> {
   List<Widget> _buildGroupAdminContent() {
     final hasGroups = _myGroups.isNotEmpty;
     return [
+      // Создать новую группу — выше карточки выбора группы
+      _buildCreateGroupCard(),
+      const SizedBox(height: 16),
+
       // Все карточки групп
       if (hasGroups)
         ..._myGroups.expand((g) => [
@@ -1513,8 +1561,9 @@ class _AdminScreenState extends State<AdminScreen> {
       if (hasGroups) _buildGroupOperationsCard(),
       if (hasGroups) const SizedBox(height: 16),
 
-      _buildCreateGroupCard(),
-      const SizedBox(height: 16),
+      // ── Личный период админа ──
+      if (hasGroups) _buildAdminPersonalPeriodCard(context),
+      if (hasGroups) const SizedBox(height: 16),
       _buildLanguageSwitcher(),
       const SizedBox(height: 16),
       _buildColorPicker(),
@@ -1885,9 +1934,39 @@ class _AdminScreenState extends State<AdminScreen> {
     );
 
     if (selected == null) return;
+    final fromGroupId = member.currentGroupId;
     try {
       await _profileRepo.updateCurrentGroup(member.id, selected.id);
+      if (fromGroupId != null) {
+        // Move reports only for periods whose dates match in the new group
+        final fromPeriods = await _periodRepo.getPeriodsForGroup(fromGroupId, includePersonal: false);
+        final toPeriods = await _periodRepo.getPeriodsForGroup(selected.id, includePersonal: false);
+        bool sameDay(DateTime a, DateTime b) =>
+            a.year == b.year && a.month == b.month && a.day == b.day;
+
+        for (final fp in fromPeriods) {
+          final match = toPeriods.where((tp) =>
+              sameDay(tp.startDate, fp.startDate) &&
+              sameDay(tp.endDate, fp.endDate)).firstOrNull;
+          if (match != null) {
+            await _reportRepo.moveUserReportsByPeriod(
+              userId: member.id,
+              fromGroupId: fromGroupId,
+              fromPeriodId: fp.id,
+              toGroupId: selected.id,
+              toPeriodId: match.id,
+            );
+          }
+        }
+        // Always move payments
+        await _paymentRepo.moveUserPayments(
+          userId: member.id,
+          fromGroupId: fromGroupId,
+          toGroupId: selected.id,
+        );
+      }
       await _loadData();
+      widget.onGroupChanged?.call();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1968,8 +2047,11 @@ class _AdminScreenState extends State<AdminScreen> {
 
 
   Widget _buildCentralPeriodsCard() {
+    // Exclude admin's personal periods — they are managed separately
     final periods = _selectedGroup != null
         ? (_groupPeriods[_selectedGroup!.id] ?? [])
+            .where((p) => !p.isPersonal)
+            .toList()
         : <IbadatPeriod>[];
 
     return Container(
@@ -2145,7 +2227,10 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget _buildGroupOperationsCard() {
     final s = S.of(context);
     if (_adminSelectedGroup == null) return const SizedBox.shrink();
-    final periods = _groupPeriods[_adminSelectedGroup!.id] ?? [];
+    // Exclude admin's personal periods — they are managed separately
+    final periods = (_groupPeriods[_adminSelectedGroup!.id] ?? [])
+        .where((p) => !p.isPersonal)
+        .toList();
     final hasPeriod = periods.isNotEmpty;
 
     return Container(
@@ -2558,60 +2643,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
-          const SizedBox(height: 10),
-          Text('📅 ${S.of(context).startDateOptional}',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-          const SizedBox(height: 6),
-          GestureDetector(
-            onTap: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: DateTime.now(),
-                firstDate: DateTime(2024),
-                lastDate: DateTime(2030),
-              );
-              if (picked != null) {
-                setState(() {
-                  _newGroupPeriodStart = picked;
-                  _newGroupPeriodEnd = picked.add(const Duration(days: 6));
-                });
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              child: Row(
-                children: [
-                  const Text('📅', style: TextStyle(fontSize: 14)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _newGroupPeriodStart == null
-                        ? Text(S.of(context).selectStartDate,
-                            style: const TextStyle(
-                                color: Color(0xFF475569), fontSize: 13))
-                        : Text(
-                            '${_newGroupPeriodStart!.day}.${_newGroupPeriodStart!.month.toString().padLeft(2, '0')}.${_newGroupPeriodStart!.year}  →  ${_newGroupPeriodEnd!.day}.${_newGroupPeriodEnd!.month.toString().padLeft(2, '0')}.${_newGroupPeriodEnd!.year}  (7 ${S.of(context).unitLabel('күн')})',
-                            style: const TextStyle(
-                                color: Color(0xFFE2E8F0), fontSize: 13),
-                          ),
-                  ),
-                  if (_newGroupPeriodStart != null)
-                    GestureDetector(
-                      onTap: () => setState(() {
-                        _newGroupPeriodStart = null;
-                        _newGroupPeriodEnd = null;
-                      }),
-                      child: const Icon(Icons.close,
-                          size: 16, color: Color(0xFF64748B)),
-                    ),
-                ],
-              ),
-            ),
-          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -2632,6 +2663,239 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAdminPersonalPeriodCard(BuildContext context) {
+    final s = S.of(context);
+    final accent = AccentProvider.instance.current.accent;
+    final hasPersonalPeriod = _adminPersonalPeriods.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => _showAdminPersonalPeriodsSheet(s),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: accent.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          children: [
+            const Text('📋', style: TextStyle(fontSize: 15)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.myPeriodTitle,
+                      style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14)),
+                  Text(
+                    hasPersonalPeriod
+                        ? _adminPersonalPeriods.last.dateRangeLabelLocalized(s.languageCode)
+                        : s.noPeriods,
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: accent, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAdminPersonalPeriodsSheet(AppStrings s) {
+    DateTime? sheetStart;
+    DateTime? sheetEnd;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final accent = AccentProvider.instance.current.accent;
+        return StatefulBuilder(builder: (ctx, setSheet) {
+          return Container(
+            padding: EdgeInsets.fromLTRB(
+                20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E293B),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+
+                Row(children: [
+                  const Text('📋', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Text(s.myPeriodTitle,
+                      style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16)),
+                ]),
+                const SizedBox(height: 16),
+
+                if (_adminPersonalPeriods.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(s.noPeriods,
+                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 300),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _adminPersonalPeriods.length,
+                      itemBuilder: (_, i) {
+                        final p = _adminPersonalPeriods[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: accent.withValues(alpha: 0.25)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(p.label,
+                                          style: const TextStyle(
+                                              color: Color(0xFFE2E8F0),
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14)),
+                                      Text(p.dateRangeLabelLocalized(s.languageCode),
+                                          style: const TextStyle(
+                                              color: Color(0xFF64748B), fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                                _deletingPeriodId == p.id
+                                    ? const SizedBox(
+                                        width: 20, height: 20,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: Color(0xFFEF4444)))
+                                    : IconButton(
+                                        onPressed: () async {
+                                          Navigator.pop(ctx);
+                                          await _tryDeletePeriod(p);
+                                          if (mounted) _showAdminPersonalPeriodsSheet(s);
+                                        },
+                                        icon: const Icon(Icons.delete_outline,
+                                            color: Color(0xFFEF4444), size: 20),
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                                        ),
+                                      ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                const Divider(color: Color(0xFF334155), height: 24),
+
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2024),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setSheet(() {
+                        sheetStart = picked;
+                        sheetEnd = picked.add(const Duration(days: 6));
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text('📅', style: TextStyle(fontSize: 14)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: sheetStart == null
+                              ? Text(s.selectStartDate,
+                                  style: const TextStyle(color: Color(0xFF475569), fontSize: 13))
+                              : Text(
+                                  '${sheetStart!.day}.${sheetStart!.month.toString().padLeft(2, '0')}.${sheetStart!.year}  →  ${sheetEnd!.day}.${sheetEnd!.month.toString().padLeft(2, '0')}.${sheetEnd!.year}  (7 ${s.unitLabel('күн')})',
+                                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13)),
+                        ),
+                        if (sheetStart != null)
+                          GestureDetector(
+                            onTap: () => setSheet(() { sheetStart = null; sheetEnd = null; }),
+                            child: const Icon(Icons.close, size: 16, color: Color(0xFF64748B)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: sheetStart == null
+                        ? null
+                        : () async {
+                            setState(() {
+                              _adminPeriodStart = sheetStart;
+                              _adminPeriodEnd = sheetEnd;
+                            });
+                            Navigator.pop(ctx);
+                            await _createAdminPersonalPeriod();
+                            if (mounted) _showAdminPersonalPeriodsSheet(s);
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: Text(s.createPeriod,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        });
+      },
     );
   }
 

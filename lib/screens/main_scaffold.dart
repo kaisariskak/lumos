@@ -35,6 +35,7 @@ class _MainScaffoldState extends State<MainScaffold>
   IbadatGroup? _group;
   bool _isLoading = true;
   final _homeKey = GlobalKey<HomeScreenState>();
+  final _reportKey = GlobalKey<ReportEditorScreenState>();
 
   @override
   void initState() {
@@ -145,6 +146,7 @@ class _MainScaffoldState extends State<MainScaffold>
                           : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
                   group != null
                       ? ReportEditorScreen(
+                          key: _reportKey,
                           profile: widget.profile,
                           group: group,
                           onSaved: () => _homeKey.currentState?.reload(),
@@ -166,7 +168,10 @@ class _MainScaffoldState extends State<MainScaffold>
                       onLogout: _logout,
                       onGroupChanged: group == null
                           ? widget.onReloadProfile
-                          : _loadGroup,
+                          : () {
+                              _loadGroup();
+                              _homeKey.currentState?.reload();
+                            },
                     )
                   else
                     ProfileScreen(
@@ -187,6 +192,9 @@ class _MainScaffoldState extends State<MainScaffold>
               groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
                 setState(() => _tabIndex = i);
+                if (i == 1) {
+                  _reportKey.currentState?.reloadPeriods();
+                }
               },
             ),
     );

@@ -110,6 +110,7 @@ class AppStrings {
   final String periods;
   final String noPeriods;
   final String createPeriod;
+  final String myPeriodTitle;
   final String periodStart;
   final String periodEnd;
   final String periodCreated;
@@ -309,6 +310,7 @@ class AppStrings {
     required this.periods,
     required this.noPeriods,
     required this.createPeriod,
+    required this.myPeriodTitle,
     required this.periodStart,
     required this.periodEnd,
     required this.periodCreated,
@@ -504,6 +506,7 @@ const _kk = AppStrings(
   periods: 'Кезеңдер',
   noPeriods: 'Кезең жоқ',
   createPeriod: 'Кезең құру',
+  myPeriodTitle: 'Менің кезеңім',
   periodStart: 'Басталу күні',
   periodEnd: 'Аяқталу күні',
   periodCreated: 'Кезең құрылды ✅',
@@ -701,6 +704,7 @@ const _ru = AppStrings(
   periods: 'Периоды',
   noPeriods: 'Периодов нет',
   createPeriod: 'Создать период',
+  myPeriodTitle: 'Мой период',
   periodStart: 'Дата начала',
   periodEnd: 'Дата конца',
   periodCreated: 'Период создан ✅',

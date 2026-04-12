@@ -116,4 +116,33 @@ class IbadatReportRepository {
         .inFilter('month', months);
     return (data as List).map((e) => IbadatReport.fromJson(e)).toList();
   }
+
+  /// Move a user's report for a specific period to a new group+period
+  Future<void> moveUserReportsByPeriod({
+    required String userId,
+    required String fromGroupId,
+    required String fromPeriodId,
+    required String toGroupId,
+    required String toPeriodId,
+  }) async {
+    await _client
+        .from('ibadat_reports')
+        .update({'group_id': toGroupId, 'period_id': toPeriodId})
+        .eq('user_id', userId)
+        .eq('group_id', fromGroupId)
+        .eq('period_id', fromPeriodId);
+  }
+
+  /// Move all reports of a user from one group to another (no period filter)
+  Future<void> moveUserReports({
+    required String userId,
+    required String fromGroupId,
+    required String toGroupId,
+  }) async {
+    await _client
+        .from('ibadat_reports')
+        .update({'group_id': toGroupId})
+        .eq('user_id', userId)
+        .eq('group_id', fromGroupId);
+  }
 }

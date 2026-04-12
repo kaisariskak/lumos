@@ -73,9 +73,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       final allPayments = results[1] as List<IbadatPayment>;
       final settings = results[2] as Map<String, IbadatMemberSettings>;
 
-      // Финансист видит всех участников группы кроме себя
+      // Показываем всех участников группы кроме админа
       final members = allMembers
-          .where((m) => m.id != widget.profile.id)
+          .where((m) => m.id != widget.group.adminId)
           .toList();
 
       final map = <String, List<IbadatPayment>>{};

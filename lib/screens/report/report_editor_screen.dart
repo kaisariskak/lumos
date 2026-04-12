@@ -27,7 +27,7 @@ class ReportEditorScreen extends StatefulWidget {
   });
 
   @override
-  State<ReportEditorScreen> createState() => _ReportEditorScreenState();
+  State<ReportEditorScreen> createState() => ReportEditorScreenState();
 }
 
 class _CounterBtn extends StatelessWidget {
@@ -150,7 +150,9 @@ class _ArrowBtn extends StatelessWidget {
   }
 }
 
-class _ReportEditorScreenState extends State<ReportEditorScreen> {
+class ReportEditorScreenState extends State<ReportEditorScreen>
+    with WidgetsBindingObserver {
+  void reloadPeriods() => _reloadPeriods();
   late final IbadatReportRepository _repo;
   late final IbadatPeriodRepository _periodRepo;
   late IbadatReport _report;
@@ -162,6 +164,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final client = Supabase.instance.client;
     _repo = IbadatReportRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
@@ -175,17 +178,50 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
     _loadExisting();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _reloadPeriods();
+    }
+  }
+
+  Future<List<IbadatPeriod>> _fetchPeriods() {
+    if (widget.profile.isAdmin) {
+      return _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
+    }
+    return _periodRepo.getPeriodsForGroup(widget.group.id, includePersonal: false);
+  }
+
+  Future<void> _reloadPeriods() async {
+    final periods = await _fetchPeriods();
+    if (!mounted) return;
+    // Keep selected period if still exists, otherwise pick newest
+    final newSelected = _selectedPeriod != null
+        ? periods.firstWhere((p) => p.id == _selectedPeriod!.id, orElse: () => periods.isNotEmpty ? periods.first : _selectedPeriod!)
+        : periods.isNotEmpty ? periods.first : null;
+    setState(() {
+      _periods = periods;
+      _selectedPeriod = newSelected;
+    });
+  }
+
   Future<void> _loadExisting() async {
     try {
       // Repository already returns newest first (order by start_date DESC)
-      final periods = await _periodRepo.getPeriodsForGroup(widget.group.id);
+      final periods = await _fetchPeriods();
       final selected = periods.isNotEmpty ? periods.first : null;
 
       IbadatReport? existing;
       if (selected != null) {
         existing = await _repo.getReportByPeriod(
           userId: widget.profile.id,
-          groupId: widget.group.id,
+          groupId: selected.groupId,
           periodId: selected.id,
         );
       } else {
@@ -206,7 +242,7 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
         } else if (selected != null) {
           _report = IbadatReport(
             userId: widget.profile.id,
-            groupId: widget.group.id,
+            groupId: selected.groupId,
             periodId: selected.id,
             month: selected.startDate.month,
             year: selected.startDate.year,
@@ -224,14 +260,14 @@ class _ReportEditorScreenState extends State<ReportEditorScreen> {
     try {
       final existing = await _repo.getReportByPeriod(
         userId: widget.profile.id,
-        groupId: widget.group.id,
+        groupId: period.groupId,
         periodId: period.id,
       );
       setState(() {
         _selectedPeriod = period;
         _report = existing ?? IbadatReport(
           userId: widget.profile.id,
-          groupId: widget.group.id,
+          groupId: period.groupId,
           periodId: period.id,
           month: period.startDate.month,
           year: period.startDate.year,

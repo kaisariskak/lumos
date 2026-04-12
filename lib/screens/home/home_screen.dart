@@ -22,11 +22,13 @@ class _GroupSection {
   final IbadatGroup group;
   List<IbadatProfile> members = [];
   IbadatGroupSettings? settings;
-  List<IbadatPeriod> periods = [];
+  List<IbadatPeriod> periods = [];        // group periods (for members)
+  List<IbadatPeriod> adminPeriods = [];   // admin's personal periods
   int periodIdx = 0;
   // month → userId → report
   Map<int, Map<String, IbadatReport>> trendReports = {};
   Map<String, IbadatReport> monthlyReports = {};
+  IbadatReport? adminReport;
   bool expanded = false;
 
   _GroupSection({required this.group});
@@ -40,6 +42,7 @@ class _GroupSection {
       : DateTime.now().year;
 
   bool get isPeriodMode => periods.isNotEmpty;
+  bool get hasAdminPeriods => adminPeriods.isNotEmpty;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +75,7 @@ class HomeScreenState extends State<HomeScreen> {
 
   // Admin: list of group sections
   List<_GroupSection> _sections = [];
+  int _adminPeriodIdx = 0; // period index for admin's own report card
 
   // Non-admin (user): single group data
   IbadatGroupSettings? _userSettings;
@@ -145,15 +149,20 @@ class HomeScreenState extends State<HomeScreen> {
     final results = await Future.wait([
       _groupRepo.getGroupMembers(group.id),
       _settingsRepo.getSettings(group.id),
-      _periodRepo.getPeriodsForGroup(group.id),
+      _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
+      _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id),
     ]);
 
-    section.members = results[0] as List<IbadatProfile>;
+    section.members = (results[0] as List<IbadatProfile>)
+        .where((m) => m.id != widget.profile.id)
+        .toList();
     section.settings = results[1] as IbadatGroupSettings?;
     final periodsRaw = results[2] as List<IbadatPeriod>;
     section.periods = periodsRaw.reversed.toList(); // oldest first
+    section.adminPeriods = (results[3] as List<IbadatPeriod>).reversed.toList();
 
     await _loadSectionReports(section);
+    await _loadAdminReport(section);
     return section;
   }
 
@@ -199,6 +208,51 @@ class HomeScreenState extends State<HomeScreen> {
       }
     }
     section.trendReports = trend;
+
+    // Admin's own report — loaded separately by _loadAdminReport
+  }
+
+  Future<void> _loadAdminReport(_GroupSection section) async {
+    if (section.hasAdminPeriods) {
+      final period = section.adminPeriods[_adminPeriodIdx.clamp(0, section.adminPeriods.length - 1)];
+      section.adminReport = await _reportRepo.getReportByPeriod(
+        userId: widget.profile.id,
+        groupId: period.groupId,
+        periodId: period.id,
+      );
+    } else {
+      section.adminReport = await _reportRepo.getReport(
+        userId: widget.profile.id,
+        groupId: section.group.id,
+        month: DateTime.now().month,
+        year: DateTime.now().year,
+      );
+    }
+  }
+
+  /// Loads only the user's own report for the currently selected period/month.
+  /// Called when navigating periods so we don't reload everything.
+  Future<void> _loadUserReport() async {
+    final isPeriodMode = _userPeriods.isNotEmpty;
+    final Map<String, IbadatReport> monthly = {};
+    if (isPeriodMode) {
+      final period = _userPeriods[_userPeriodIdx.clamp(0, _userPeriods.length - 1)];
+      final r = await _reportRepo.getReportByPeriod(
+        userId: widget.profile.id,
+        groupId: widget.group.id,
+        periodId: period.id,
+      );
+      if (r != null) monthly[r.userId] = r;
+    } else {
+      final r = await _reportRepo.getReport(
+        userId: widget.profile.id,
+        groupId: widget.group.id,
+        month: _viewMonth,
+        year: _viewYear,
+      );
+      if (r != null) monthly[r.userId] = r;
+    }
+    if (mounted) setState(() => _userMonthlyReports = monthly);
   }
 
   // ── User: single group ──────────────────────────────────────────────────────
@@ -206,7 +260,7 @@ class HomeScreenState extends State<HomeScreen> {
     final members = await _groupRepo.getGroupMembers(widget.group.id);
     final settings = await _settingsRepo.getSettings(widget.group.id);
     final loadedPeriods =
-        await _periodRepo.getPeriodsForGroup(widget.group.id);
+        await _periodRepo.getPeriodsForGroup(widget.group.id, includePersonal: false);
     final periods = loadedPeriods.reversed.toList();
 
     final isPeriodMode = periods.isNotEmpty;
@@ -403,97 +457,153 @@ class HomeScreenState extends State<HomeScreen> {
   // ── Admin view: multiple groups ──────────────────────────────────────────────
 
   List<Widget> _buildAdminContent(AppStrings s) {
-    final totalMembers = _sections.fold(0, (sum, sec) {
-      // exclude admin from count
-      return sum + sec.members.where((m) => m.id != widget.profile.id).length;
-    });
+    final totalMembers = _sections.fold(0, (sum, sec) => sum + sec.members.length);
 
     return [
-      // Admin's own card
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF6366F1).withValues(alpha: 0.15),
-              const Color(0xFF8B5CF6).withValues(alpha: 0.08),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
+      // Combined admin card: profile info + period nav + own report
+      Builder(builder: (context) {
+        if (_sections.isEmpty) return const SizedBox.shrink();
+        final sec = _sections.firstWhere(
+          (sec) => sec.group.id == widget.profile.currentGroupId,
+          orElse: () => _sections.first,
+        );
+        final periods = sec.adminPeriods; // admin's personal periods
+        final hasPeriods = periods.isNotEmpty;
+        final pidx = _adminPeriodIdx.clamp(0, hasPeriods ? periods.length - 1 : 0);
+        final adminReport = sec.adminReport;
+        final score = adminReport != null
+            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, sec.settings)
+            : 0.0;
+        final trend = _trendValues(widget.profile.id, sec.trendReports, sec.viewMonth, sec.viewYear);
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => DetailScreen(
+                profile: widget.profile,
+                groupId: sec.group.id,
+                report: adminReport,
+                weekLabel: WeekUtils.monthLabel(sec.viewMonth, sec.viewYear),
+                isWeekMode: false,
+                monthReports: sec.trendReports.values
+                    .map((m) => m[widget.profile.id])
+                    .whereType<IbadatReport>()
+                    .toList(),
+                periods: sec.adminPeriods,
+                initialPeriodIdx: pidx,
               ),
-              child: Center(
-                child: Text(
-                  widget.profile.displayName[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 20,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.profile.displayName,
-                    style: const TextStyle(
-                      color: Color(0xFFE2E8F0),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '👑 ${s.groupAdminLabel}',
-                    style: const TextStyle(color: Color(0xFFA5B4FC), fontSize: 12),
-                  ),
+            ));
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF6366F1).withValues(alpha: 0.15),
+                  const Color(0xFF8B5CF6).withValues(alpha: 0.08),
                 ],
               ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Column(
               children: [
-                Text(
-                  '${_sections.length}',
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                  ),
+                // Top row: avatar + name + stats
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.profile.displayName[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.profile.displayName,
+                              style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 16)),
+                          const SizedBox(height: 2),
+                          Text('👑 ${s.groupAdminLabel}',
+                              style: const TextStyle(color: Color(0xFFA5B4FC), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${_sections.length}',
+                            style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w800, fontSize: 18)),
+                        Text(s.groupLabel, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                        const SizedBox(height: 4),
+                        Text('$totalMembers',
+                            style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w800, fontSize: 18)),
+                        Text(s.memberCount, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                      ],
+                    ),
+                  ],
                 ),
-                Text(s.groupLabel, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
-                const SizedBox(height: 4),
-                Text(
-                  '$totalMembers',
-                  style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
+                const SizedBox(height: 12),
+                Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
+                const SizedBox(height: 10),
+                // Period navigator
+                if (hasPeriods)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed: pidx < periods.length - 1 ? () async {
+                          setState(() => _adminPeriodIdx = pidx + 1);
+                          await _loadAdminReport(sec);
+                          if (mounted) setState(() {});
+                        } : null,
+                        icon: Icon(Icons.chevron_left,
+                            color: pidx < periods.length - 1
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF334155)),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      Text(
+                        periods[pidx].dateRangeLabelLocalized(s.languageCode),
+                        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                      IconButton(
+                        onPressed: pidx > 0 ? () async {
+                          setState(() => _adminPeriodIdx = pidx - 1);
+                          await _loadAdminReport(sec);
+                          if (mounted) setState(() {});
+                        } : null,
+                        icon: Icon(Icons.chevron_right,
+                            color: pidx > 0
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF334155)),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    ],
                   ),
-                ),
-                Text(s.memberCount, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                if (hasPeriods) const SizedBox(height: 8),
+                // Report stats row
+                _AdminReportRow(report: adminReport, score: score, trend: trend),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      }),
       const SizedBox(height: 16),
 
       if (_sections.isEmpty)
@@ -515,18 +625,13 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGroupSection(_GroupSection section, AppStrings s) {
-    final totalMembers = section.members.where((m) => m.id != widget.profile.id).length;
-    final groupScore = totalMembers == 0
-        ? 0.0
-        : section.members.fold(0.0, (sum, m) {
-              return sum +
-                  _calcScore(m.id, section.monthlyReports, section.settings);
-            }) /
-            totalMembers;
+    final totalMembers = section.members.length;
+    final allScores = section.members
+        .map((m) => _calcScore(m.id, section.monthlyReports, section.settings))
+        .toList();
+    final groupScore = allScores.isEmpty ? 0.0 : allScores.fold(0.0, (s, v) => s + v) / allScores.length;
 
-    // Exclude admin from member list — admin is shown separately at the top
-    final sorted = List<IbadatProfile>.from(
-        section.members.where((m) => m.id != widget.profile.id));
+    final sorted = List<IbadatProfile>.from(section.members);
     sorted.sort((a, b) =>
         _calcScore(b.id, section.monthlyReports, section.settings)
             .compareTo(_calcScore(a.id, section.monthlyReports, section.settings)));
@@ -797,9 +902,9 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   IconButton(
                     onPressed: _userPeriodIdx > 0
-                        ? () {
+                        ? () async {
                             setState(() => _userPeriodIdx--);
-                            _loadUserData();
+                            await _loadUserReport();
                           }
                         : null,
                     icon: Icon(Icons.chevron_left,
@@ -829,9 +934,9 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                   IconButton(
                     onPressed: _userPeriodIdx < _userPeriods.length - 1
-                        ? () {
+                        ? () async {
                             setState(() => _userPeriodIdx++);
-                            _loadUserData();
+                            await _loadUserReport();
                           }
                         : null,
                     icon: Icon(Icons.chevron_right,
@@ -1256,6 +1361,54 @@ class _CategoryChips extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── Admin report summary row ─────────────────────────────────────────────────
+
+class _AdminReportRow extends StatelessWidget {
+  final IbadatReport? report;
+  final double score;
+  final List<int> trend;
+
+  const _AdminReportRow({required this.report, required this.score, required this.trend});
+
+  @override
+  Widget build(BuildContext context) {
+    if (report == null) {
+      return Center(
+        child: Text(
+          S.of(context).noReport,
+          style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+        ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: IbadatCategory.all.map((cat) {
+              final val = report!.getValue(cat.key);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cat.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${cat.icon}$val',
+                  style: TextStyle(color: cat.color, fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        RingIndicator(value: score, size: 52, strokeWidth: 5),
+      ],
     );
   }
 }

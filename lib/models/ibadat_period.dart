@@ -6,6 +6,7 @@ class IbadatPeriod {
   final DateTime endDate;
   final String createdBy;
   final DateTime createdAt;
+  final bool isPersonal;
 
   IbadatPeriod({
     required this.id,
@@ -15,6 +16,7 @@ class IbadatPeriod {
     required this.endDate,
     required this.createdBy,
     required this.createdAt,
+    this.isPersonal = false,
   });
 
   factory IbadatPeriod.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class IbadatPeriod {
       endDate: DateTime.parse(json['end_date'] as String),
       createdBy: json['created_by'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
+      isPersonal: json['is_personal'] as bool? ?? false,
     );
   }
 

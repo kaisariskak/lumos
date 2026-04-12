@@ -62,7 +62,8 @@ class _SuperAdminCodesScreenState extends State<SuperAdminCodesScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${S.of(context).error}: $e')),
       );
-      setState(() => _generating = false);
+    } finally {
+      if (mounted) setState(() => _generating = false);
     }
   }
 
@@ -277,11 +278,6 @@ class _CodeTile extends StatelessWidget {
       statusLabel = '🟡 Активен';
     }
 
-    final exp = code.expiresAt;
-    final expiresLabel =
-        '${exp.day.toString().padLeft(2, '0')}.${exp.month.toString().padLeft(2, '0')}.${exp.year}  '
-        '${exp.hour.toString().padLeft(2, '0')}:${exp.minute.toString().padLeft(2, '0')}';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -314,7 +310,7 @@ class _CodeTile extends StatelessWidget {
                         style: TextStyle(color: labelColor, fontSize: 11)),
                     const SizedBox(width: 8),
                     Text(
-                      '${s.codeExpiresIn}: $expiresLabel',
+                      isUsed ? '' : '· Одноразовый',
                       style: const TextStyle(
                           color: Color(0xFF64748B), fontSize: 10),
                     ),
