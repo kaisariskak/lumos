@@ -1,0 +1,22 @@
+-- ============================================================
+-- Migration: Удаление таблицы ibadat_allowlist
+-- Date: 2026-04-20
+-- ============================================================
+-- Таблица на практике не задействована: механизм предавторизации
+-- по email заменён полностью на invite-коды (ibadat_invite_codes).
+-- Все соответствующие пути во Flutter-коде удалены:
+--   * ProfileRepository.{isEmailAllowed,addToAllowlist,
+--       removeFromAllowlist,getAllowlist,getAllowlistByGroup,
+--       getAllowlistGroupId,getAllowlistEntry} — удалены.
+--   * auth_gate.dart — больше не смотрит в allowlist при
+--     создании профиля; вместо этого сразу показывает экран
+--     ввода invite-кода.
+--   * admin_screen.dart — «добавить админа по email» больше не
+--     пишет в allowlist: если пользователя нет, просит выдать
+--     ему ADM-код.
+--
+-- ВНИМАНИЕ: операция необратима. Перед выполнением
+-- СДЕЛАЙТЕ БЭКАП БД.
+-- ============================================================
+
+DROP TABLE IF EXISTS ibadat_allowlist CASCADE;

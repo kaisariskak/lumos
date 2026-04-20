@@ -201,6 +201,17 @@ class AppStrings {
   final String currentWeekLabel;
   final String weeksAgoSuffix;
 
+  // ── Custom Categories ──────────────────────────────────
+  final String customCatsTitle;
+  final String customCatsHint;
+  final String customCatAdd;
+  final String customCatNewTitle;
+  final String customCatIconLabel;
+  final String customCatNameLabel;
+  final String customCatNameHint;
+  final String customCatUnitLabel;
+  final String customCatMaxLabel;
+
   // ── PIN ────────────────────────────────────────────────
   final String pinCode;
   final String pinEnabled;
@@ -388,6 +399,15 @@ class AppStrings {
     required this.memberRoleLabel,
     required this.currentWeekLabel,
     required this.weeksAgoSuffix,
+    required this.customCatsTitle,
+    required this.customCatsHint,
+    required this.customCatAdd,
+    required this.customCatNewTitle,
+    required this.customCatIconLabel,
+    required this.customCatNameLabel,
+    required this.customCatNameHint,
+    required this.customCatUnitLabel,
+    required this.customCatMaxLabel,
     required this.pinCode,
     required this.pinEnabled,
     required this.pinDisabled,
@@ -587,6 +607,15 @@ const _kk = AppStrings(
   memberRoleLabel: 'Мүше',
   currentWeekLabel: 'Ағымдағы апта',
   weeksAgoSuffix: ' апта бұрын',
+  customCatsTitle: 'Көрсеткіштер',
+  customCatsHint: 'Топқа арнайы көрсеткіштер қосыңыз. Олар есеп бетінде пайда болады.',
+  customCatAdd: 'Жаңа көрсеткіш қосу',
+  customCatNewTitle: 'Жаңа көрсеткіш',
+  customCatIconLabel: 'Белгіше:',
+  customCatNameLabel: 'Атауы:',
+  customCatNameHint: 'Мысалы: Қосымша намаз',
+  customCatUnitLabel: 'Өлшем бірлігі:',
+  customCatMaxLabel: 'Апталық максимум:',
   pinCode: 'PIN код',
   pinEnabled: 'Қосулы',
   pinDisabled: 'Өшірулі',
@@ -796,6 +825,15 @@ const _ru = AppStrings(
   pinConfirm: 'Подтвердите PIN-код',
   pinWrong: 'Неверный PIN-код',
   pinMismatch: 'PIN-коды не совпадают',
+  customCatsTitle: 'Показатели',
+  customCatsHint: 'Добавьте специальные показатели для группы. Они появятся в отчёте.',
+  customCatAdd: 'Добавить показатель',
+  customCatNewTitle: 'Новый показатель',
+  customCatIconLabel: 'Иконка:',
+  customCatNameLabel: 'Название:',
+  customCatNameHint: 'Например: Доп. намаз',
+  customCatUnitLabel: 'Единица измерения:',
+  customCatMaxLabel: 'Недельный максимум:',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────
@@ -838,6 +876,7 @@ extension AppStringsX on AppStrings {
         case 'рет': return 'раз';
         case 'күн': return 'дн.';
         case 'мін': return 'мин.';
+        case 'сағ': return 'час';
       }
     }
     return kkUnit;

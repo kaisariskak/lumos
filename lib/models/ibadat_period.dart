@@ -1,6 +1,6 @@
 class IbadatPeriod {
   final String id;
-  final String groupId;
+  final String? groupId;
   final String label;
   final DateTime startDate;
   final DateTime endDate;
@@ -10,7 +10,7 @@ class IbadatPeriod {
 
   IbadatPeriod({
     required this.id,
-    required this.groupId,
+    this.groupId,
     required this.label,
     required this.startDate,
     required this.endDate,
@@ -22,7 +22,7 @@ class IbadatPeriod {
   factory IbadatPeriod.fromJson(Map<String, dynamic> json) {
     return IbadatPeriod(
       id: json['id'] as String,
-      groupId: json['group_id'] as String,
+      groupId: json['group_id'] as String?,
       label: json['label'] as String,
       startDate: DateTime.parse(json['start_date'] as String),
       endDate: DateTime.parse(json['end_date'] as String),

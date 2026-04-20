@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_strings.dart';
-import '../../models/group_metric.dart';
+import '../../models/custom_category.dart';
+import '../../models/ibadat_category.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
 import '../../models/ibadat_period.dart';
-import '../../reporting/report_progress.dart';
+import '../../models/ibadat_group_settings.dart';
 import '../../repositories/ibadat_group_repository.dart';
-import '../../repositories/group_metric_repository.dart';
+import '../../repositories/custom_category_repository.dart';
+import '../../repositories/ibadat_group_settings_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../utils/week_utils.dart';
@@ -21,7 +23,7 @@ import '../detail/detail_screen.dart';
 class _GroupSection {
   final IbadatGroup group;
   List<IbadatProfile> members = [];
-  List<GroupMetric> metrics = [];
+  IbadatGroupSettings? settings;
   List<IbadatPeriod> periods = [];        // group periods (for members)
   List<IbadatPeriod> adminPeriods = [];   // admin's personal periods
   int periodIdx = 0;
@@ -49,7 +51,7 @@ class _GroupSection {
 
 class HomeScreen extends StatefulWidget {
   final IbadatProfile profile;
-  final IbadatGroup? group; // null allowed only for admin without a selected group
+  final IbadatGroup group; // the user's current group (used for non-admin)
   final VoidCallback onSwitchGroup;
 
   const HomeScreen({
@@ -68,8 +70,10 @@ class HomeScreenState extends State<HomeScreen> {
 
   late final IbadatGroupRepository _groupRepo;
   late final IbadatReportRepository _reportRepo;
-  late final GroupMetricRepository _metricRepo;
+  late final IbadatGroupSettingsRepository _settingsRepo;
   late final IbadatPeriodRepository _periodRepo;
+  late final CustomCategoryRepository _customCatRepo;
+  List<CustomCategory> _customCategories = [];
 
   bool _isLoading = true;
 
@@ -78,8 +82,8 @@ class HomeScreenState extends State<HomeScreen> {
   int _adminPeriodIdx = 0; // period index for admin's own report card
 
   // Non-admin (user): single group data
+  IbadatGroupSettings? _userSettings;
   List<IbadatProfile> _userMembers = [];
-  List<GroupMetric> _userMetrics = [];
   Map<String, IbadatReport> _userMonthlyReports = {};
   Map<int, Map<String, IbadatReport>> _userTrendReports = {};
   List<IbadatPeriod> _userPeriods = [];
@@ -108,8 +112,9 @@ class HomeScreenState extends State<HomeScreen> {
     final client = Supabase.instance.client;
     _groupRepo = IbadatGroupRepository(client);
     _reportRepo = IbadatReportRepository(client);
-    _metricRepo = GroupMetricRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
+    _settingsRepo = IbadatGroupSettingsRepository(client);
+    _customCatRepo = CustomCategoryRepository(client);
     _loadData();
   }
 
@@ -121,6 +126,8 @@ class HomeScreenState extends State<HomeScreen> {
       } else {
         await _loadUserData();
       }
+      final cats = await _customCatRepo.getForGroup(widget.group.id);
+      if (mounted) setState(() => _customCategories = cats);
     } catch (_) {
       // ignore
     }
@@ -148,7 +155,7 @@ class HomeScreenState extends State<HomeScreen> {
 
     final results = await Future.wait([
       _groupRepo.getGroupMembers(group.id),
-      _metricRepo.getForGroup(group.id),
+      _settingsRepo.getSettings(group.id),
       _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
       _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id),
     ]);
@@ -156,7 +163,7 @@ class HomeScreenState extends State<HomeScreen> {
     section.members = (results[0] as List<IbadatProfile>)
         .where((m) => m.id != widget.profile.id)
         .toList();
-    section.metrics = results[1] as List<GroupMetric>;
+    section.settings = results[1] as IbadatGroupSettings?;
     final periodsRaw = results[2] as List<IbadatPeriod>;
     section.periods = periodsRaw.reversed.toList(); // oldest first
     section.adminPeriods = (results[3] as List<IbadatPeriod>).reversed.toList();
@@ -239,14 +246,14 @@ class HomeScreenState extends State<HomeScreen> {
       final period = _userPeriods[_userPeriodIdx.clamp(0, _userPeriods.length - 1)];
       final r = await _reportRepo.getReportByPeriod(
         userId: widget.profile.id,
-        groupId: widget.group!.id,
+        groupId: widget.group.id,
         periodId: period.id,
       );
       if (r != null) monthly[r.userId] = r;
     } else {
       final r = await _reportRepo.getReport(
         userId: widget.profile.id,
-        groupId: widget.group!.id,
+        groupId: widget.group.id,
         month: _viewMonth,
         year: _viewYear,
       );
@@ -257,14 +264,10 @@ class HomeScreenState extends State<HomeScreen> {
 
   // ── User: single group ──────────────────────────────────────────────────────
   Future<void> _loadUserData() async {
-    final results = await Future.wait([
-      _groupRepo.getGroupMembers(widget.group!.id),
-      _metricRepo.getForGroup(widget.group!.id),
-      _periodRepo.getPeriodsForGroup(widget.group!.id, includePersonal: false),
-    ]);
-    final members = results[0] as List<IbadatProfile>;
-    final metrics = results[1] as List<GroupMetric>;
-    final loadedPeriods = results[2] as List<IbadatPeriod>;
+    final members = await _groupRepo.getGroupMembers(widget.group.id);
+    final settings = await _settingsRepo.getSettings(widget.group.id);
+    final loadedPeriods =
+        await _periodRepo.getPeriodsForGroup(widget.group.id, includePersonal: false);
     final periods = loadedPeriods.reversed.toList();
 
     final isPeriodMode = periods.isNotEmpty;
@@ -281,14 +284,14 @@ class HomeScreenState extends State<HomeScreen> {
       final period = periods[_userPeriodIdx.clamp(0, periods.length - 1)];
       final r = await _reportRepo.getReportByPeriod(
         userId: widget.profile.id,
-        groupId: widget.group!.id,
+        groupId: widget.group.id,
         periodId: period.id,
       );
       if (r != null) monthly[r.userId] = r;
     } else {
       final r = await _reportRepo.getReport(
         userId: widget.profile.id,
-        groupId: widget.group!.id,
+        groupId: widget.group.id,
         month: viewMonth,
         year: viewYear,
       );
@@ -300,7 +303,7 @@ class HomeScreenState extends State<HomeScreen> {
       for (final p in periods.take(4)) {
         final tr = await _reportRepo.getReportByPeriod(
           userId: widget.profile.id,
-          groupId: widget.group!.id,
+          groupId: widget.group.id,
           periodId: p.id,
         );
         trend[p.startDate.month] = tr != null ? {tr.userId: tr} : {};
@@ -309,7 +312,7 @@ class HomeScreenState extends State<HomeScreen> {
       for (final (m, y) in _lastFourMonths(viewMonth, viewYear)) {
         final tr = await _reportRepo.getReport(
           userId: widget.profile.id,
-          groupId: widget.group!.id,
+          groupId: widget.group.id,
           month: m,
           year: y,
         );
@@ -320,7 +323,7 @@ class HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() {
         _userMembers = members;
-        _userMetrics = metrics;
+        _userSettings = settings;
         _userPeriods = periods;
         _viewMonth = viewMonth;
         _viewYear = viewYear;
@@ -333,23 +336,23 @@ class HomeScreenState extends State<HomeScreen> {
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   double _calcScore(String userId, Map<String, IbadatReport> monthly,
-      List<GroupMetric> metrics) {
+      IbadatGroupSettings? settings) {
     final report = monthly[userId];
     if (report == null) return 0;
-    return reportProgress(report, metrics);
+    double sum = 0;
+    for (final cat in IbadatCategory.all) {
+      final max = settings?.getMax(cat.key) ?? cat.monthMax;
+      sum += (report.getValue(cat.key) / max).clamp(0.0, 1.0);
+    }
+    return sum / IbadatCategory.all.length;
   }
 
   List<int> _trendValues(String userId,
-      Map<int, Map<String, IbadatReport>> trendReports,
-      int month,
-      int year,
-      List<GroupMetric> metrics) {
+      Map<int, Map<String, IbadatReport>> trendReports, int month, int year) {
     final months = _lastFourMonths(month, year);
-    final primaryMetricId = metrics.isNotEmpty ? metrics.first.id : null;
     return months.map((pair) {
       final r = trendReports[pair.$1]?[userId];
-      if (r == null || primaryMetricId == null) return 0;
-      return r.valueForMetric(primaryMetricId);
+      return r?.quranPages ?? 0;
     }).toList();
   }
 
@@ -476,15 +479,9 @@ class HomeScreenState extends State<HomeScreen> {
         final pidx = _adminPeriodIdx.clamp(0, hasPeriods ? periods.length - 1 : 0);
         final adminReport = sec.adminReport;
         final score = adminReport != null
-            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, sec.metrics)
+            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, sec.settings)
             : 0.0;
-        final trend = _trendValues(
-          widget.profile.id,
-          sec.trendReports,
-          sec.viewMonth,
-          sec.viewYear,
-          sec.metrics,
-        );
+        final trend = _trendValues(widget.profile.id, sec.trendReports, sec.viewMonth, sec.viewYear);
 
         return GestureDetector(
           onTap: () {
@@ -608,12 +605,7 @@ class HomeScreenState extends State<HomeScreen> {
                   ),
                 if (hasPeriods) const SizedBox(height: 8),
                 // Report stats row
-                _AdminReportRow(
-                  report: adminReport,
-                  score: score,
-                  trend: trend,
-                  metrics: sec.metrics,
-                ),
+                _AdminReportRow(report: adminReport, score: score, trend: trend, customCategories: _customCategories),
               ],
             ),
           ),
@@ -642,14 +634,14 @@ class HomeScreenState extends State<HomeScreen> {
   Widget _buildGroupSection(_GroupSection section, AppStrings s) {
     final totalMembers = section.members.length;
     final allScores = section.members
-        .map((m) => _calcScore(m.id, section.monthlyReports, section.metrics))
+        .map((m) => _calcScore(m.id, section.monthlyReports, section.settings))
         .toList();
     final groupScore = allScores.isEmpty ? 0.0 : allScores.fold(0.0, (s, v) => s + v) / allScores.length;
 
     final sorted = List<IbadatProfile>.from(section.members);
     sorted.sort((a, b) =>
-        _calcScore(b.id, section.monthlyReports, section.metrics)
-            .compareTo(_calcScore(a.id, section.monthlyReports, section.metrics)));
+        _calcScore(b.id, section.monthlyReports, section.settings)
+            .compareTo(_calcScore(a.id, section.monthlyReports, section.settings)));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -749,14 +741,9 @@ class HomeScreenState extends State<HomeScreen> {
               final idx = entry.key;
               final member = entry.value;
               final score = _calcScore(
-                  member.id, section.monthlyReports, section.metrics);
-              final trend = _trendValues(
-                member.id,
-                section.trendReports,
-                section.viewMonth,
-                section.viewYear,
-                section.metrics,
-              );
+                  member.id, section.monthlyReports, section.settings);
+              final trend = _trendValues(member.id, section.trendReports,
+                  section.viewMonth, section.viewYear);
               final isMe = member.id == widget.profile.id;
               final medal = idx == 0
                   ? '🥇'
@@ -793,7 +780,7 @@ class HomeScreenState extends State<HomeScreen> {
                   score: score,
                   trend: trend,
                   report: section.monthlyReports[member.id],
-                  metrics: section.metrics,
+                  customCategories: _customCategories,
                 ),
               );
             }),
@@ -868,14 +855,9 @@ class HomeScreenState extends State<HomeScreen> {
     final me = _userMembers.where((m) => m.id == widget.profile.id).toList();
     final score = me.isEmpty
         ? 0.0
-        : _calcScore(me.first.id, _userMonthlyReports, _userMetrics);
+        : _calcScore(me.first.id, _userMonthlyReports, _userSettings);
     final trend = _trendValues(
-      widget.profile.id,
-      _userTrendReports,
-      _viewMonth,
-      _viewYear,
-      _userMetrics,
-    );
+        widget.profile.id, _userTrendReports, _viewMonth, _viewYear);
 
     return [
       // Group badge — tap to see group / switch
@@ -895,7 +877,7 @@ class HomeScreenState extends State<HomeScreen> {
               const Text('👥', style: TextStyle(fontSize: 13)),
               const SizedBox(width: 6),
               Text(
-                widget.group!.name,
+                widget.group.name,
                 style: const TextStyle(
                   color: Color(0xFFA5B4FC),
                   fontSize: 12,
@@ -908,7 +890,7 @@ class HomeScreenState extends State<HomeScreen> {
       ),
       const SizedBox(height: 12),
       _GroupProgressBar(
-        groupName: widget.group!.name,
+        groupName: widget.group.name,
         memberCount: _userMembers.length,
         score: score,
       ),
@@ -1025,7 +1007,7 @@ class HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => DetailScreen(
                 profile: me.first,
-                groupId: widget.group!.id,
+                groupId: widget.group.id,
                 report: _userMonthlyReports[me.first.id],
                 weekLabel:
                     WeekUtils.monthLabel(_viewMonth, _viewYear),
@@ -1047,8 +1029,8 @@ class HomeScreenState extends State<HomeScreen> {
             score: score,
             trend: trend,
             report: _userMonthlyReports[me.first.id],
-            metrics: _userMetrics,
             showRank: false,
+            customCategories: _customCategories,
           ),
         ),
     ];
@@ -1058,15 +1040,6 @@ class HomeScreenState extends State<HomeScreen> {
 // ── Reusable member tile ───────────────────────────────────────────────────────
 
 class _MemberTile extends StatelessWidget {
-  static const List<Color> _fallbackRankColors = [
-    Color(0xFF6366F1),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFFEF4444),
-    Color(0xFF06B6D4),
-    Color(0xFF8B5CF6),
-  ];
-
   final IbadatProfile member;
   final bool isMe;
   final int rank;
@@ -1074,8 +1047,8 @@ class _MemberTile extends StatelessWidget {
   final double score;
   final List<int> trend;
   final IbadatReport? report;
-  final List<GroupMetric> metrics;
   final bool showRank;
+  final List<CustomCategory> customCategories;
 
   const _MemberTile({
     required this.member,
@@ -1085,16 +1058,15 @@ class _MemberTile extends StatelessWidget {
     required this.score,
     required this.trend,
     required this.report,
-    required this.metrics,
     this.showRank = true,
+    this.customCategories = const [],
   });
 
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final catColor = metrics.isNotEmpty
-        ? metrics[rank % metrics.length].color
-        : _fallbackRankColors[rank % _fallbackRankColors.length];
+    final catColor =
+        IbadatCategory.all[rank % IbadatCategory.all.length].color;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1216,7 +1188,7 @@ class _MemberTile extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 4),
-                _CategoryChips(report: report, metrics: metrics),
+                _CategoryChips(report: report, customCategories: customCategories),
               ],
             ),
           ),
@@ -1374,39 +1346,41 @@ class _GroupProgressBar extends StatelessWidget {
 
 class _CategoryChips extends StatelessWidget {
   final IbadatReport? report;
-  final List<GroupMetric> metrics;
+  final List<CustomCategory> customCategories;
 
-  const _CategoryChips({this.report, this.metrics = const []});
+  const _CategoryChips({this.report, this.customCategories = const []});
 
   @override
   Widget build(BuildContext context) {
-    if (metrics.isEmpty) {
-      return const Text(
-        'Нет показателей',
-        style: TextStyle(color: Color(0xFF64748B), fontSize: 10),
-      );
-    }
     return Wrap(
       spacing: 4,
       runSpacing: 2,
-      children: metrics.map((metric) {
-        final val = metric.id == null ? 0 : report?.valueForMetric(metric.id!) ?? 0;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-          decoration: BoxDecoration(
-            color: metric.color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Text(
-            '${metric.icon}$val',
-            style: TextStyle(
-              color: metric.color,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
+      children: [
+        ...IbadatCategory.all.map((cat) {
+          final val = report?.getValue(cat.key) ?? 0;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: cat.color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(5),
             ),
-          ),
-        );
-      }).toList(),
+            child: Text('${cat.icon}$val',
+                style: TextStyle(color: cat.color, fontSize: 10, fontWeight: FontWeight.w600)),
+          );
+        }),
+        ...customCategories.map((cat) {
+          final val = report?.getCustomValue(cat.id) ?? 0;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text('${cat.icon}$val',
+                style: const TextStyle(color: Color(0xFF6366F1), fontSize: 10, fontWeight: FontWeight.w600)),
+          );
+        }),
+      ],
     );
   }
 }
@@ -1417,13 +1391,13 @@ class _AdminReportRow extends StatelessWidget {
   final IbadatReport? report;
   final double score;
   final List<int> trend;
-  final List<GroupMetric> metrics;
+  final List<CustomCategory> customCategories;
 
   const _AdminReportRow({
     required this.report,
     required this.score,
     required this.trend,
-    this.metrics = const [],
+    this.customCategories = const [],
   });
 
   @override
@@ -1436,34 +1410,42 @@ class _AdminReportRow extends StatelessWidget {
         ),
       );
     }
-    if (metrics.isEmpty) {
-      return Center(
-        child: Text(
-          'Нет показателей',
-          style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
-        ),
-      );
-    }
     return Row(
       children: [
         Expanded(
           child: Wrap(
             spacing: 4,
             runSpacing: 4,
-            children: metrics.map((metric) {
-              final val = metric.id == null ? 0 : report!.valueForMetric(metric.id!);
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: metric.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  '${metric.icon}$val',
-                  style: TextStyle(color: metric.color, fontSize: 10, fontWeight: FontWeight.w600),
-                ),
-              );
-            }).toList(),
+            children: [
+              ...IbadatCategory.all.map((cat) {
+                final val = report!.getValue(cat.key);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: cat.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${cat.icon}$val',
+                    style: TextStyle(color: cat.color, fontSize: 10, fontWeight: FontWeight.w600),
+                  ),
+                );
+              }),
+              ...customCategories.map((cat) {
+                final val = report!.getCustomValue(cat.id);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${cat.icon}$val',
+                    style: const TextStyle(color: Color(0xFF6366F1), fontSize: 10, fontWeight: FontWeight.w600),
+                  ),
+                );
+              }),
+            ],
           ),
         ),
         const SizedBox(width: 12),

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_strings.dart';
-import '../../models/ibadat_category.dart';
+import '../../models/group_metric.dart';
 import '../../models/ibadat_group.dart';
+import '../../models/ibadat_period.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
-import '../../models/ibadat_period.dart';
+import '../../reporting/report_progress.dart';
+import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../theme/accent_provider.dart';
@@ -14,7 +16,7 @@ import '../../utils/week_utils.dart';
 
 class ReportEditorScreen extends StatefulWidget {
   final IbadatProfile profile;
-  final IbadatGroup group;
+  final IbadatGroup? group;
   final VoidCallback? onSaved;
   final VoidCallback? onBack;
 
@@ -47,13 +49,21 @@ class _CounterBtn extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: enabled ? color.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.04),
+          color: enabled
+              ? color.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: enabled ? color.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.06),
+            color: enabled
+                ? color.withValues(alpha: 0.4)
+                : Colors.white.withValues(alpha: 0.06),
           ),
         ),
-        child: Icon(icon, color: enabled ? color : const Color(0xFF475569), size: 20),
+        child: Icon(
+          icon,
+          color: enabled ? color : const Color(0xFF475569),
+          size: 20,
+        ),
       ),
     );
   }
@@ -103,7 +113,11 @@ class _PeriodNavigator extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   selected?.dateRangeLabelLocalized(langCode) ?? '',
-                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -150,14 +164,17 @@ class _ArrowBtn extends StatelessWidget {
   }
 }
 
-class ReportEditorScreenState extends State<ReportEditorScreen>
-    with WidgetsBindingObserver {
+class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBindingObserver {
   void reloadPeriods() => _reloadPeriods();
+
   late final IbadatReportRepository _repo;
   late final IbadatPeriodRepository _periodRepo;
+  late final GroupMetricRepository _metricRepo;
+
   late IbadatReport _report;
   List<IbadatPeriod> _periods = [];
   IbadatPeriod? _selectedPeriod;
+  List<GroupMetric> _groupMetrics = [];
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -168,10 +185,11 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
     final client = Supabase.instance.client;
     _repo = IbadatReportRepository(client);
     _periodRepo = IbadatPeriodRepository(client);
+    _metricRepo = GroupMetricRepository(client);
     final now = DateTime.now();
     _report = IbadatReport(
       userId: widget.profile.id,
-      groupId: widget.group.id,
+      groupId: widget.group?.id,
       month: now.month,
       year: now.year,
     );
@@ -195,26 +213,45 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
     if (widget.profile.isAdmin) {
       return _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
     }
-    return _periodRepo.getPeriodsForGroup(widget.group.id, includePersonal: false);
+    return _periodRepo.getPeriodsForGroup(widget.group!.id, includePersonal: false);
+  }
+
+  Future<List<GroupMetric>> _fetchMetrics(List<IbadatPeriod> periods) {
+    if (widget.profile.isAdmin) {
+      return _metricRepo.getForAdmin(widget.profile.id);
+    }
+    final groupId = widget.group?.id ?? (periods.isNotEmpty ? periods.first.groupId : null);
+    if (groupId == null) {
+      return Future.value(const <GroupMetric>[]);
+    }
+    return _metricRepo.getForGroup(groupId);
   }
 
   Future<void> _reloadPeriods() async {
-    final periods = await _fetchPeriods();
-    if (!mounted) return;
-    // Keep selected period if still exists, otherwise pick newest
-    final newSelected = _selectedPeriod != null
-        ? periods.firstWhere((p) => p.id == _selectedPeriod!.id, orElse: () => periods.isNotEmpty ? periods.first : _selectedPeriod!)
-        : periods.isNotEmpty ? periods.first : null;
-    setState(() {
-      _periods = periods;
-      _selectedPeriod = newSelected;
-    });
+    try {
+      final periods = await _fetchPeriods();
+      final metrics = await _fetchMetrics(periods);
+      if (!mounted) return;
+      final newSelected = _selectedPeriod != null
+          ? periods.firstWhere(
+              (p) => p.id == _selectedPeriod!.id,
+              orElse: () => periods.isNotEmpty ? periods.first : _selectedPeriod!,
+            )
+          : periods.isNotEmpty ? periods.first : null;
+      setState(() {
+        _periods = periods;
+        _selectedPeriod = newSelected;
+        _groupMetrics = metrics;
+      });
+    } catch (_) {
+      // Keep the current editor state if background refresh fails.
+    }
   }
 
   Future<void> _loadExisting() async {
     try {
-      // Repository already returns newest first (order by start_date DESC)
       final periods = await _fetchPeriods();
+      final metrics = await _fetchMetrics(periods);
       final selected = periods.isNotEmpty ? periods.first : null;
 
       IbadatReport? existing;
@@ -224,18 +261,20 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
           groupId: selected.groupId,
           periodId: selected.id,
         );
-      } else {
+      } else if (widget.group != null) {
         final now = DateTime.now();
         existing = await _repo.getReport(
           userId: widget.profile.id,
-          groupId: widget.group.id,
+          groupId: widget.group!.id,
           month: now.month,
           year: now.year,
         );
       }
 
+      if (!mounted) return;
       setState(() {
         _periods = periods;
+        _groupMetrics = metrics;
         _selectedPeriod = selected;
         if (existing != null) {
           _report = existing;
@@ -251,7 +290,9 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
         _isLoading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -263,6 +304,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
         groupId: period.groupId,
         periodId: period.id,
       );
+      if (!mounted) return;
       setState(() {
         _selectedPeriod = period;
         _report = existing ?? IbadatReport(
@@ -275,11 +317,17 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
         _isLoading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _save() async {
+    if (_selectedPeriod == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(S.of(context).noPeriodSelected)),
+      );
+      return;
+    }
     setState(() => _isSaving = true);
     try {
       await _repo.upsertReport(_report);
@@ -301,6 +349,196 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
     }
   }
 
+  List<GroupMetric> get _visibleMetrics => _groupMetrics.where((metric) => metric.id != null).toList();
+
+  Widget _buildEmptyMetricsState(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.inbox_outlined, color: Color(0xFF94A3B8), size: 34),
+          SizedBox(height: 10),
+          Text(
+            'Показатели ещё не настроены',
+            style: TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
+            style: TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 13,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(BuildContext context, GroupMetric metric) {
+    final s = S.of(context);
+    final metricId = metric.id!;
+    final value = _report.valueForMetric(metricId);
+    final sliderMax = metric.maxValue > 0 ? metric.maxValue.toDouble() : 1.0;
+    final clampedValue = value.clamp(0, metric.maxValue > 0 ? metric.maxValue : 1).toDouble();
+    final quickValues = quickValuesFor(metric);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(metric.icon, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      metric.localizedName(s.languageCode),
+                      style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      'Макс: ${metric.maxValue} ${s.unitLabel(metric.unit)}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: metric.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$value ${s.unitLabel(metric.unit)}',
+                  style: TextStyle(
+                    color: metric.color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: metric.color,
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.08),
+              thumbColor: Colors.white,
+              overlayColor: metric.color.withValues(alpha: 0.2),
+              trackHeight: 6,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+            ),
+            child: Slider(
+              min: 0,
+              max: sliderMax,
+              value: clampedValue,
+              onChanged: (newValue) {
+                setState(() => _report.setValue(metricId, newValue.round()));
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _CounterBtn(
+                  icon: Icons.remove,
+                  color: metric.color,
+                  onTap: value > 0
+                      ? () => setState(() => _report.setValue(metricId, value - 1))
+                      : null,
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: metric.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$value',
+                    style: TextStyle(
+                      color: metric.color,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                    ),
+                  ),
+                ),
+                _CounterBtn(
+                  icon: Icons.add,
+                  color: metric.color,
+                  onTap: () => setState(() => _report.setValue(metricId, value + 1)),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            children: quickValues.map((quickValue) {
+              final isSelected = value == quickValue;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _report.setValue(metricId, quickValue)),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected ? metric.color : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$quickValue',
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -310,7 +548,11 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [const Color(0xFF0F172A), AccentProvider.instance.current.gradientMid, const Color(0xFF0F172A)],
+            colors: [
+              const Color(0xFF0F172A),
+              AccentProvider.instance.current.gradientMid,
+              const Color(0xFF0F172A),
+            ],
             stops: const [0.0, 0.5, 1.0],
           ),
         ),
@@ -321,12 +563,13 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                 child: _isLoading
                     ? Center(
                         child: CircularProgressIndicator(
-                            color: AccentProvider.instance.current.accent))
+                          color: AccentProvider.instance.current.accent,
+                        ),
+                      )
                     : SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                         child: Column(
                           children: [
-                            // Header
                             Container(
                               width: 56,
                               height: 56,
@@ -341,8 +584,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                               ),
                               child: Center(
                                 child: Text(
-                                  widget.profile.displayName[0]
-                                      .toUpperCase(),
+                                  widget.profile.displayName[0].toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
@@ -363,12 +605,9 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                             const SizedBox(height: 4),
                             Text(
                               _selectedPeriod?.dateRangeLabelLocalized(S.of(context).languageCode) ?? WeekUtils.currentMonthLabel(),
-                              style: const TextStyle(
-                                  color: Color(0xFF94A3B8), fontSize: 13),
+                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                             ),
                             const SizedBox(height: 10),
-
-                            // Period selector with arrow navigation
                             if (_periods.isNotEmpty) ...[
                               _PeriodNavigator(
                                 periods: _periods,
@@ -380,25 +619,22 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                               const SizedBox(height: 10),
                             ],
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF59E0B)
-                                    .withValues(alpha: 0.08),
+                                color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                    color: const Color(0xFFF59E0B)
-                                        .withValues(alpha: 0.2)),
+                                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Text('💡',
-                                      style: TextStyle(fontSize: 12)),
+                                  const Icon(Icons.lightbulb_outline, color: Color(0xFFFCD34D), size: 14),
                                   const SizedBox(width: 6),
                                   Text(
                                     S.of(context).autoCalculated,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       color: Color(0xFFFCD34D),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
@@ -408,217 +644,26 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                               ),
                             ),
                             const SizedBox(height: 20),
-
-                            // Category sliders
-                            ...IbadatCategory.all.map((cat) {
-                              final val = _report.getValue(cat.key);
-
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.03),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.06),
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    // Top row
-                                    Row(
-                                      children: [
-                                        Text(cat.icon,
-                                            style: const TextStyle(
-                                                fontSize: 22)),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                S.of(context).categoryLabel(cat.key),
-                                                style: const TextStyle(
-                                                  color: Color(0xFFE2E8F0),
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 15,
-                                                ),
-                                              ),
-                                              Text(
-                                                'макс: ${cat.weekMax} ${S.of(context).unitLabel(cat.unit)}${S.of(context).perWeek}',
-                                                style: const TextStyle(
-                                                    color: Color(0xFF64748B),
-                                                    fontSize: 11),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: cat.color
-                                                .withValues(alpha: 0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            '$val ${S.of(context).unitLabel(cat.unit)}',
-                                            style: TextStyle(
-                                              color: cat.color,
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-
-                                    // Slider
-                                    SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        activeTrackColor: cat.color,
-                                        inactiveTrackColor: Colors.white
-                                            .withValues(alpha: 0.08),
-                                        thumbColor: Colors.white,
-                                        overlayColor: cat.color
-                                            .withValues(alpha: 0.2),
-                                        trackHeight: 6,
-                                        thumbShape:
-                                            const RoundSliderThumbShape(
-                                                enabledThumbRadius: 10),
-                                      ),
-                                      child: Slider(
-                                        min: 0,
-                                        max: cat.weekMax.toDouble(),
-                                        value: val.toDouble().clamp(
-                                            0, cat.weekMax.toDouble()),
-                                        onChanged: (v) {
-                                          setState(() {
-                                            _report.setValue(
-                                                cat.key, v.round());
-                                          });
-                                        },
-                                      ),
-                                    ),
-
-                                    // +/- counter row
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 10),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          _CounterBtn(
-                                            icon: Icons.remove,
-                                            color: cat.color,
-                                            onTap: val > 0
-                                                ? () => setState(() => _report.setValue(cat.key, val - 1))
-                                                : null,
-                                          ),
-                                          Container(
-                                            margin: const EdgeInsets.symmetric(horizontal: 18),
-                                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                                            decoration: BoxDecoration(
-                                              color: cat.color.withValues(alpha: 0.12),
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              '$val',
-                                              style: TextStyle(
-                                                color: cat.color,
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 20,
-                                              ),
-                                            ),
-                                          ),
-                                          _CounterBtn(
-                                            icon: Icons.add,
-                                            color: cat.color,
-                                            onTap: val < cat.weekMax
-                                                ? () => setState(() => _report.setValue(cat.key, val + 1))
-                                                : null,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Quick buttons 25/50/75/100%
-                                    Row(
-                                      children: [0.25, 0.5, 0.75, 1.0]
-                                          .map((f) {
-                                        final quickVal =
-                                            (cat.weekMax * f).round();
-                                        final isSelected = val == quickVal;
-                                        return Expanded(
-                                          child: Padding(
-                                            padding: const EdgeInsets.only(
-                                                right: 6),
-                                            child: GestureDetector(
-                                              onTap: () {
-                                                setState(() {
-                                                  _report.setValue(
-                                                      cat.key, quickVal);
-                                                });
-                                              },
-                                              child: AnimatedContainer(
-                                                duration: const Duration(
-                                                    milliseconds: 200),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? cat.color
-                                                      : Colors.white
-                                                          .withValues(
-                                                              alpha: 0.05),
-                                                  borderRadius:
-                                                      BorderRadius.circular(8),
-                                                ),
-                                                child: Text(
-                                                  '$quickVal',
-                                                  style: TextStyle(
-                                                    color: isSelected
-                                                        ? Colors.white
-                                                        : const Color(
-                                                            0xFF94A3B8),
-                                                    fontWeight: FontWeight.w600,
-                                                    fontSize: 12,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-
+                            if (_visibleMetrics.isEmpty)
+                              _buildEmptyMetricsState(context)
+                            else
+                              ..._visibleMetrics.map((metric) => _buildMetricCard(context, metric)),
                             const SizedBox(height: 8),
-
-                            // Save button
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: _isSaving ? null : _save,
+                                onPressed: (_isSaving || _visibleMetrics.isEmpty)
+                                    ? null
+                                    : _save,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AccentProvider.instance.current.accentDark,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 16),
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   elevation: 0,
-                                  shadowColor:
-                                      AccentProvider.instance.current.accentDark,
+                                  shadowColor: AccentProvider.instance.current.accentDark,
                                 ),
                                 child: _isSaving
                                     ? const SizedBox(
@@ -630,8 +675,8 @@ class ReportEditorScreenState extends State<ReportEditorScreen>
                                         ),
                                       )
                                     : Text(
-                                        '✅ ${S.of(context).save}',
-                                        style: TextStyle(
+                                        S.of(context).save,
+                                        style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w700,
                                         ),

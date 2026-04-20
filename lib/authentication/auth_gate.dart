@@ -86,53 +86,20 @@ class _AuthGateState extends State<AuthGate> {
     try {
       final repo = ProfileRepository(Supabase.instance.client);
       IbadatProfile? profile = await repo.getProfile(user.id);
-      final email = user.email ?? '';
 
       if (profile == null) {
-        // Check legacy allowlist first (backward compat for existing users)
-        final allowlistEntry = await repo.getAllowlistEntry(email);
-        if (allowlistEntry != null) {
-          final targetRole = allowlistEntry['target_role'] as String? ?? 'user';
-          final createdBy = allowlistEntry['created_by'] as String?;
-          final groupId = allowlistEntry['group_id'] as String?;
-
-          profile = await repo.createProfile(
-            id: user.id,
-            displayName: user.userMetadata?['full_name'] as String? ??
-                user.userMetadata?['name'] as String? ??
-                email,
-            email: email,
-            avatarUrl: user.userMetadata?['avatar_url'] as String?,
-            role: targetRole,
-            superAdminId: targetRole == 'admin' ? createdBy : null,
-            createdByAdminId: targetRole == 'user' ? createdBy : null,
-          );
-
-          if (groupId != null) {
-            await repo.updateCurrentGroup(profile.id, groupId);
-            profile = await repo.getProfile(user.id) ?? profile;
-          }
-        } else {
-          // No allowlist entry → show invite code screen
-          if (!mounted) return;
-          setState(() => _showInviteCode = true);
-          return;
-        }
+        // No profile → require invite code to register
+        if (!mounted) return;
+        setState(() => _showInviteCode = true);
+        return;
       } else if (profile.currentGroupId == null && profile.role == 'user') {
-        // Profile exists but no group → try legacy allowlist first
-        final groupId = await repo.getAllowlistGroupId(email);
-        if (groupId != null) {
-          await repo.updateCurrentGroup(profile.id, groupId);
-          profile = await repo.getProfile(user.id) ?? profile;
-        } else {
-          // No allowlist group → show invite code screen to assign group
-          if (!mounted) return;
-          setState(() {
-            _profile = profile;
-            _showInviteCode = true;
-          });
-          return;
-        }
+        // Profile exists but no group → require invite code to join a group
+        if (!mounted) return;
+        setState(() {
+          _profile = profile;
+          _showInviteCode = true;
+        });
+        return;
       }
 
       if (!mounted) return;

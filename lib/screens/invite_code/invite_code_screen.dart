@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_strings.dart';
@@ -125,6 +126,12 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                 TextField(
                   controller: _codeCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      return newValue.copyWith(text: newValue.text.toUpperCase());
+                    }),
+                  ],
                   style: const TextStyle(
                     color: Color(0xFFE2E8F0),
                     fontSize: 20,

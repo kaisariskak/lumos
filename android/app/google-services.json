@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "611565419854",
+    "project_id": "reportmoney-auth",
+    "storage_bucket": "reportmoney-auth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:611565419854:android:c26a2635333564caee321f",
+        "android_client_info": {
+          "package_name": "com.example.reportdeepen"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "611565419854-9uj9pmmljsmkkl84medivmooab8klg4d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.reportdeepen",
+            "certificate_hash": "c496c997ce110c04a4fb64f643570a9838a442f6"
+          }
+        },
+        {
+          "client_id": "611565419854-98u0ase97iak6jefmvgkqkgkkhau0fif.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsZ9aBpdEuJgD1C0tT3SdiIXYLSQ88IXQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "611565419854-98u0ase97iak6jefmvgkqkgkkhau0fif.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "611565419854-4u964te38k9tbgqfg8fvke4u9l0s32pq.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.reportmoney"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

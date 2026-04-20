@@ -134,28 +134,20 @@ class _MainScaffoldState extends State<MainScaffold>
             : IndexedStack(
                 index: _tabIndex,
                 children: [
-                  group != null
-                      ? HomeScreen(
-                          key: _homeKey,
-                          profile: widget.profile,
-                          group: group,
-                          onSwitchGroup: widget.onSwitchGroup,
-                        )
-                      : isAdmin
-                          ? const _AdminNoGroupHint()
-                          : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
-                  group != null
-                      ? ReportEditorScreen(
-                          key: _reportKey,
-                          profile: widget.profile,
-                          group: group,
-                          onSaved: () => _homeKey.currentState?.reload(),
-                          onBack: () => setState(() => _tabIndex = 0),
-                        )
-                      : isAdmin
-                          ? const _AdminNoGroupHint()
-                          : _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup),
-                  if (isFinancier && group != null)
+                  HomeScreen(
+                    key: _homeKey,
+                    profile: widget.profile,
+                    group: group,
+                    onSwitchGroup: widget.onSwitchGroup,
+                  ),
+                  ReportEditorScreen(
+                    key: _reportKey,
+                    profile: widget.profile,
+                    group: group,
+                    onSaved: () => _homeKey.currentState?.reload(),
+                    onBack: () => setState(() => _tabIndex = 0),
+                  ),
+                  if (isFinancier)
                     PaymentsScreen(
                       profile: widget.profile,
                       group: group,
@@ -197,28 +189,6 @@ class _MainScaffoldState extends State<MainScaffold>
                 }
               },
             ),
-    );
-  }
-}
-
-class _AdminNoGroupHint extends StatelessWidget {
-  const _AdminNoGroupHint();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text('👑', style: TextStyle(fontSize: 48)),
-          SizedBox(height: 16),
-          Text(
-            'Создайте группу во вкладке Админ',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 15),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
     );
   }
 }

@@ -39,4 +39,21 @@ class IbadatGroup {
       if (financierId != null) 'financier_id': financierId,
     };
   }
+
+  IbadatGroup copyWith({
+    String? name,
+    String? adminId,
+    bool clearFinancierId = false,
+    String? financierId,
+  }) {
+    return IbadatGroup(
+      id: id,
+      name: name ?? this.name,
+      code: code,
+      adminId: adminId ?? this.adminId,
+      financierId: clearFinancierId ? null : (financierId ?? this.financierId),
+      createdAt: createdAt,
+      members: members,
+    );
+  }
 }

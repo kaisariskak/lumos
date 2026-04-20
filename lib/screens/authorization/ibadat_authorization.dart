@@ -1,7 +1,3 @@
-import 'dart:convert';
-import 'dart:math';
-
-import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,35 +15,24 @@ class IbadatAuthorization extends StatefulWidget {
 class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   bool _isLoading = false;
 
-String _generateNonce([int length = 32]) {
-    const charset = '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
-    final random = Random.secure();
-    return List.generate(length, (_) => charset[random.nextInt(charset.length)]).join();
-  }
-
-  String _sha256ofString(String input) {
-    final bytes = utf8.encode(input);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
-
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      final rawNonce = _generateNonce();
-      final hashedNonce = _sha256ofString(rawNonce);
-
-      await GoogleSignIn.instance.initialize(
+      final googleSignIn = GoogleSignIn(
         serverClientId: AppConfig.googleWebClientId,
-        nonce: hashedNonce,
       );
-      final googleUser = await GoogleSignIn.instance.authenticate();
-      final idToken = googleUser.authentication.idToken;
+      await googleSignIn.signOut();
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      final auth = await googleUser.authentication;
+      final idToken = auth.idToken;
       if (idToken == null) throw Exception('ID token жоқ');
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
-        nonce: rawNonce,
       );
     } on AuthException catch (e) {
       if (!mounted) return;

@@ -19,7 +19,7 @@ class IbadatPeriodRepository {
   }
 
   Future<IbadatPeriod> createPeriod({
-    required String groupId,
+    String? groupId,
     required String label,
     required DateTime startDate,
     required DateTime endDate,

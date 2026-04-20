@@ -8,10 +8,13 @@ import '../../theme/accent_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_period.dart';
 import '../../models/ibadat_profile.dart';
-import '../../models/group_metric.dart';
 import '../../models/invite_code.dart';
+import '../../models/ibadat_category.dart';
+import '../../models/ibadat_group_settings.dart';
+import '../../models/custom_category.dart';
+import '../../repositories/custom_category_repository.dart';
 import '../../repositories/ibadat_group_repository.dart';
-import '../../repositories/group_metric_repository.dart';
+import '../../repositories/ibadat_group_settings_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../repositories/payment_repository.dart';
@@ -47,8 +50,13 @@ class _AdminScreenState extends State<AdminScreen> {
   late final IbadatReportRepository _reportRepo;
   late final PaymentRepository _paymentRepo;
   late final InviteCodeRepository _codeRepo;
-  late final GroupMetricRepository _metricRepo;
-  List<GroupMetric> _groupMetrics = [];
+  late final IbadatGroupSettingsRepository _settingsRepo;
+
+  final Map<String, TextEditingController> _settingsCtrls = {};
+  bool _settingsExpanded = false;
+  bool _customCatsExpanded = false;
+  List<CustomCategory> _customCategories = [];
+  late final CustomCategoryRepository _customCatRepo;
 
   // Super admin data
   List<IbadatGroup> _allGroups = [];
@@ -70,8 +78,6 @@ class _AdminScreenState extends State<AdminScreen> {
   InviteCode? _activeUserCode;
   InviteCode? _activeAdminCode;
   bool _generatingCode = false;
-  bool _metricsExpanded = false;
-  int _groupMetricsLoadVersion = 0;
   final _newGroupCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _periodLabelCtrl = TextEditingController();
@@ -90,9 +96,6 @@ class _AdminScreenState extends State<AdminScreen> {
   DateTime? _adminPeriodStart;
   DateTime? _adminPeriodEnd;
 
-  // Admin's own personal metrics (admin_id != null, group_id == null)
-  List<GroupMetric> _adminMetrics = [];
-
   bool get _isSuperAdmin => widget.profile.isSuperAdmin;
 
   @override
@@ -105,7 +108,11 @@ class _AdminScreenState extends State<AdminScreen> {
     _reportRepo = IbadatReportRepository(client);
     _paymentRepo = PaymentRepository(client);
     _codeRepo = InviteCodeRepository(client);
-    _metricRepo = GroupMetricRepository(client);
+    _settingsRepo = IbadatGroupSettingsRepository(client);
+    _customCatRepo = CustomCategoryRepository(client);
+    for (final cat in IbadatCategory.all) {
+      _settingsCtrls[cat.key] = TextEditingController();
+    }
     _loadData();
     _loadPinState();
   }
@@ -140,6 +147,7 @@ class _AdminScreenState extends State<AdminScreen> {
     _newGroupCtrl.dispose();
     _emailCtrl.dispose();
     _periodLabelCtrl.dispose();
+    for (final c in _settingsCtrls.values) { c.dispose(); }
     super.dispose();
   }
 
@@ -154,14 +162,10 @@ class _AdminScreenState extends State<AdminScreen> {
         final ungrouped = await _profileRepo.getUngroupedUsersByAdminIds(adminIds);
         final Map<String, List<IbadatProfile>> membersMap = {};
         final Map<String, List<IbadatPeriod>> periodsMap = {};
-        await Future.wait(groups.map((g) async {
-          final results = await Future.wait([
-            _groupRepo.getGroupMembers(g.id, adminId: g.adminId),
-            _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
-          ]);
-          membersMap[g.id] = results[0] as List<IbadatProfile>;
-          periodsMap[g.id] = results[1] as List<IbadatPeriod>;
-        }));
+        for (final g in groups) {
+          membersMap[g.id] = await _groupRepo.getGroupMembers(g.id, adminId: g.adminId);
+          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id, includePersonal: false);
+        }
         setState(() {
           _myAdmins = admins;
           _ungroupedUsers = ungrouped;
@@ -180,22 +184,13 @@ class _AdminScreenState extends State<AdminScreen> {
         final myGroups = await _groupRepo.getGroupsByAdminIds([widget.profile.id]);
         final Map<String, List<IbadatProfile>> membersMap = {};
         final Map<String, List<IbadatPeriod>> periodsMap = {};
-        await Future.wait(myGroups.map((g) async {
-          final results = await Future.wait([
-            _groupRepo.getGroupMembers(g.id),
-            _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
-          ]);
-          final all = results[0] as List<IbadatProfile>;
+        for (final g in myGroups) {
+          final all = await _groupRepo.getGroupMembers(g.id);
           membersMap[g.id] = all.where((m) => m.id != widget.profile.id).toList();
-          periodsMap[g.id] = results[1] as List<IbadatPeriod>;
-        }));
-        // Load admin's personal periods (is_personal = true) and personal metrics.
-        final adminResults = await Future.wait([
-          _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id),
-          _metricRepo.getForAdmin(widget.profile.id),
-        ]);
-        final personalPeriods = adminResults[0] as List<IbadatPeriod>;
-        final personalMetrics = adminResults[1] as List<GroupMetric>;
+          periodsMap[g.id] = await _periodRepo.getPeriodsForGroup(g.id, includePersonal: false);
+        }
+        // Load admin's personal periods (is_personal = true)
+        final personalPeriods = await _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
 
         setState(() {
           _myGroups = myGroups;
@@ -203,7 +198,6 @@ class _AdminScreenState extends State<AdminScreen> {
           _groupMembers = membersMap;
           _groupPeriods = periodsMap;
           _adminPersonalPeriods = personalPeriods;
-          _adminMetrics = personalMetrics;
           // Для совместимости оставляем _members для текущей группы
           final currentGroup = widget.group ?? _localGroup;
           _members = currentGroup != null ? (membersMap[currentGroup.id] ?? []) : [];
@@ -223,22 +217,26 @@ class _AdminScreenState extends State<AdminScreen> {
             createdBy: widget.profile.id);
       }
 
-      // Load code and metrics for initially selected group (admin)
+      // Load code and settings for initially selected group (admin)
       if (widget.profile.isAdmin && !_isSuperAdmin && _adminSelectedGroup != null) {
-        final selectedGroupId = _adminSelectedGroup!.id;
-        final requestVersion = ++_groupMetricsLoadVersion;
+        final customCats = await _customCatRepo.getForGroup(_adminSelectedGroup!.id);
+        if (mounted) setState(() => _customCategories = customCats);
         final results = await Future.wait([
-          _codeRepo.getActiveUserCode(selectedGroupId),
-          _metricRepo.getForGroup(selectedGroupId),
+          _codeRepo.getOrCreateActiveUserCode(
+            groupId: _adminSelectedGroup!.id,
+            createdBy: widget.profile.id,
+          ),
+          _settingsRepo.getSettings(_adminSelectedGroup!.id),
         ]);
-        final code = results[0] as InviteCode?;
-        final metrics = results[1] as List<GroupMetric>;
-        if (mounted &&
-            requestVersion == _groupMetricsLoadVersion &&
-            _adminSelectedGroup?.id == selectedGroupId) {
+        final code = results[0] as InviteCode;
+        final settings = (results[1] as IbadatGroupSettings?) ??
+            IbadatGroupSettings(groupId: _adminSelectedGroup!.id, maxValues: {});
+        for (final cat in IbadatCategory.all) {
+          _settingsCtrls[cat.key]?.text = settings.getMax(cat.key).toString();
+        }
+        if (mounted) {
           setState(() {
             _adminSelectedCode = code;
-            _groupMetrics = metrics;
           });
         }
       }
@@ -296,7 +294,8 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _generateCodeForGroup(IbadatGroup group) async {
     setState(() => _generatingCode = true);
     try {
-      await _profileRepo.updateCurrentGroup(widget.profile.id, group.id);
+      await ProfileRepository(Supabase.instance.client)
+          .updateCurrentGroup(widget.profile.id, group.id);
       final code = await _codeRepo.generateUserCode(
         groupId: group.id,
         createdBy: widget.profile.id,
@@ -316,40 +315,39 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _onAdminGroupSelected(IbadatGroup g) async {
-    final requestVersion = ++_groupMetricsLoadVersion;
     setState(() {
       _adminSelectedGroup = g;
       _adminSelectedCode = null;
-      _groupMetrics = [];
       _periodStart = null;
       _periodEnd = null;
     });
     // Загружаем код и настройки для выбранной группы
-    try {
-      final results = await Future.wait([
-        _codeRepo.getActiveUserCode(g.id),
-        _metricRepo.getForGroup(g.id),
-      ]);
-      if (!mounted ||
-          requestVersion != _groupMetricsLoadVersion ||
-          _adminSelectedGroup?.id != g.id) {
-        return;
-      }
-      final code = results[0] as InviteCode?;
-      final metrics = results[1] as List<GroupMetric>;
-      setState(() {
-        _adminSelectedCode = code;
-        _groupMetrics = metrics;
-      });
-    } catch (e) {
-      if (!mounted ||
-          requestVersion != _groupMetricsLoadVersion ||
-          _adminSelectedGroup?.id != g.id) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+    final results = await Future.wait([
+      _codeRepo.getOrCreateActiveUserCode(
+        groupId: g.id,
+        createdBy: widget.profile.id,
+      ),
+      _settingsRepo.getSettings(g.id),
+    ]);
+    if (!mounted) return;
+    final code = results[0] as InviteCode;
+    final settings = (results[1] as IbadatGroupSettings?) ??
+        IbadatGroupSettings(groupId: g.id, maxValues: {});
+    final ctrls = <String, TextEditingController>{};
+    for (final cat in IbadatCategory.all) {
+      ctrls[cat.key] = TextEditingController(
+          text: settings.getMax(cat.key).toString());
     }
+    final customCats = await _customCatRepo.getForGroup(g.id);
+    // Dispose старых контроллеров
+    for (final c in _settingsCtrls.values) { c.dispose(); }
+    if (!mounted) return;
+    setState(() {
+      _adminSelectedCode = code;
+      _settingsCtrls.clear();
+      _settingsCtrls.addAll(ctrls);
+      _customCategories = customCats;
+    });
   }
 
   /// Super-admin creates an admin user
@@ -361,12 +359,16 @@ class _AdminScreenState extends State<AdminScreen> {
       final user = await _profileRepo.getUserByEmail(email);
       if (!mounted) return;
       if (user == null) {
-        // Пользователь ещё не зарегистрирован — попросите его сначала
-        // пройти регистрацию по ADM-коду.
-        setState(() {
-          _addError = 'Пользователь с $email не найден. Сначала отправьте ему ADM-код для регистрации.';
-          _isAdding = false;
-        });
+        // Not registered yet — add to allowlist with target_role = admin
+        await _profileRepo.addToAllowlist(email, widget.profile.id, targetRole: 'admin');
+        _emailCtrl.clear();
+        setState(() { _addError = null; _isAdding = false; });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$email тіркелді ✅ Жүйеге кіргенде автоматты admin болады.'),
+          backgroundColor: const Color(0xFF0EA5E9),
+          duration: const Duration(seconds: 5),
+        ));
       } else if (user.role == 'admin' && user.superAdminId == widget.profile.id) {
         setState(() { _addError = '${user.displayName} бұл супер-adminдің admin тізімінде бар'; _isAdding = false; });
       } else {
@@ -391,14 +393,8 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _reassignUser(IbadatProfile user, String groupId) async {
     try {
       await _profileRepo.updateCurrentGroup(user.id, groupId);
+      await _loadData();
       if (!mounted) return;
-      setState(() {
-        _ungroupedUsers.removeWhere((u) => u.id == user.id);
-        _groupMembers[groupId] = [
-          ...(_groupMembers[groupId] ?? []),
-          user.copyWith(currentGroupId: groupId),
-        ];
-      });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('${user.displayName} топқа қосылды ✅'),
         backgroundColor: const Color(0xFF059669),
@@ -463,30 +459,13 @@ class _AdminScreenState extends State<AdminScreen> {
             }
           }
         }
-        final newRole = isAdmin ? 'user' : 'admin';
-        await _profileRepo.updateRole(member.id, newRole);
+        await _profileRepo.updateRole(member.id, isAdmin ? 'user' : 'admin');
         // Also update group's admin_id so RLS stays consistent
         if (!isAdmin) {
           await _groupRepo.updateAdminId(group.id, member.id);
         }
+        await _loadData();
         if (!mounted) return;
-        setState(() {
-          IbadatProfile applyRole(IbadatProfile m) {
-            if (m.id == member.id) return m.copyWith(role: newRole);
-            if (!isAdmin && m.role == 'admin') return m.copyWith(role: 'user');
-            return m;
-          }
-          for (final key in _groupMembers.keys) {
-            _groupMembers[key] = _groupMembers[key]!.map(applyRole).toList();
-          }
-          _members = _members.map(applyRole).toList();
-          if (!isAdmin) {
-            _allGroups = _allGroups.map((g) =>
-              g.id == group.id ? g.copyWith(adminId: member.id) : g).toList();
-            _myGroups = _myGroups.map((g) =>
-              g.id == group.id ? g.copyWith(adminId: member.id) : g).toList();
-          }
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(isAdmin
@@ -542,13 +521,8 @@ class _AdminScreenState extends State<AdminScreen> {
     if (confirmed == true) {
       try {
         await _profileRepo.updateCurrentGroup(member.id, null);
+        await _loadData();
         if (!mounted) return;
-        setState(() {
-          for (final key in _groupMembers.keys) {
-            _groupMembers[key]?.removeWhere((m) => m.id == member.id);
-          }
-          _members.removeWhere((m) => m.id == member.id);
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(S.of(context).removedFromGroup),
@@ -734,6 +708,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _createAdminPersonalPeriod() async {
     if (_adminPeriodStart == null) return;
     final groupId = _adminSelectedGroup?.id ?? widget.profile.currentGroupId;
+    if (groupId == null) return;
     final end = _adminPeriodEnd ?? _adminPeriodStart!.add(const Duration(days: 6));
     final s = _adminPeriodStart!;
     final label = '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
@@ -783,13 +758,7 @@ class _AdminScreenState extends State<AdminScreen> {
         return;
       }
       await _periodRepo.deletePeriod(period.id);
-      if (!mounted) return;
-      setState(() {
-        if (period.groupId != null) {
-          _groupPeriods[period.groupId!]?.removeWhere((p) => p.id == period.id);
-        }
-        _adminPersonalPeriods.removeWhere((p) => p.id == period.id);
-      });
+      await _loadData();
       widget.onGroupChanged?.call();
     } catch (e) {
       if (!mounted) return;
@@ -803,13 +772,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _deletePeriod(IbadatPeriod period) async {
     try {
       await _periodRepo.deletePeriod(period.id);
-      if (!mounted) return;
-      setState(() {
-        if (period.groupId != null) {
-          _groupPeriods[period.groupId!]?.removeWhere((p) => p.id == period.id);
-        }
-        _adminPersonalPeriods.removeWhere((p) => p.id == period.id);
-      });
+      await _loadData();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1143,6 +1106,10 @@ class _AdminScreenState extends State<AdminScreen> {
       _buildCreateGroupCard(),
       const SizedBox(height: 16),
 
+      _buildIbadatSettingsCard(),
+      const SizedBox(height: 16),
+      _buildCustomCategoriesCard(),
+      const SizedBox(height: 16),
       _buildLanguageSwitcher(),
       const SizedBox(height: 16),
       _buildColorPicker(),
@@ -1561,24 +1528,14 @@ class _AdminScreenState extends State<AdminScreen> {
         // Если удалили текущую группу — сбросить профиль
         final isCurrentGroup = group.id == (widget.group?.id ?? _localGroup?.id);
         if (isCurrentGroup) {
-          await _profileRepo.updateCurrentGroup(widget.profile.id, null);
+          await ProfileRepository(Supabase.instance.client)
+              .updateCurrentGroup(widget.profile.id, null);
           setState(() => _localGroup = null);
           widget.onGroupChanged?.call();
           return;
         }
+        await _loadData();
         if (!mounted) return;
-        setState(() {
-          _allGroups.removeWhere((g) => g.id == group.id);
-          _myGroups.removeWhere((g) => g.id == group.id);
-          _groupMembers.remove(group.id);
-          _groupPeriods.remove(group.id);
-          if (_adminSelectedGroup?.id == group.id) {
-            _adminSelectedGroup = _myGroups.isNotEmpty ? _myGroups.first : null;
-          }
-          if (_selectedGroup?.id == group.id) {
-            _selectedGroup = _allGroups.isNotEmpty ? _allGroups.first : null;
-          }
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('"${group.name}" ${S.of(context).delete}'),
@@ -1613,13 +1570,18 @@ class _AdminScreenState extends State<AdminScreen> {
           const SizedBox(height: 16),
         ]),
 
-      // ── Одна карточка: выбор группы + период + код + показатели ──
+      // ── Одна карточка: выбор группы + период + код + макс. значения ──
       if (hasGroups) _buildGroupOperationsCard(),
       if (hasGroups) const SizedBox(height: 16),
 
-      // ── Личный период админа ── доступен всегда, даже без групп
-      _buildAdminPersonalPeriodCard(context),
-      const SizedBox(height: 16),
+      // ── Личный период админа ──
+      if (hasGroups) _buildAdminPersonalPeriodCard(context),
+      if (hasGroups) const SizedBox(height: 16),
+
+      // ── Кастомные показатели ──
+      if (hasGroups) _buildCustomCategoriesCard(),
+      if (hasGroups) const SizedBox(height: 16),
+
       _buildLanguageSwitcher(),
       const SizedBox(height: 16),
       _buildColorPicker(),
@@ -2082,20 +2044,8 @@ class _AdminScreenState extends State<AdminScreen> {
       try {
         await _groupRepo.updateFinancier(
             group.id, isFinancier ? null : member.id);
+        await _loadData();
         if (!mounted) return;
-        final newFinancierId = isFinancier ? null : member.id;
-        setState(() {
-          _allGroups = _allGroups.map((g) => g.id == group.id
-              ? g.copyWith(
-                  financierId: newFinancierId,
-                  clearFinancierId: newFinancierId == null)
-              : g).toList();
-          _myGroups = _myGroups.map((g) => g.id == group.id
-              ? g.copyWith(
-                  financierId: newFinancierId,
-                  clearFinancierId: newFinancierId == null)
-              : g).toList();
-        });
         widget.onGroupChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2524,160 +2474,148 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ],
 
-          // ══ 3. ПОКАЗАТЕЛИ ГРУППЫ ══════════════════════════════════
           const SizedBox(height: 18),
           Divider(color: Colors.white.withValues(alpha: 0.06), height: 1),
           const SizedBox(height: 18),
-          ..._buildGroupMetricsSection(s),
-        ],
-      ),
-    );
-  }
 
-  List<Widget> _buildGroupMetricsSection(AppStrings s) {
-    final metrics = _groupMetrics;
-    final accent = AccentProvider.instance.current.accent;
-    final accentLight = AccentProvider.instance.current.accentLight;
-    return [
-      GestureDetector(
-        onTap: () => setState(() => _metricsExpanded = !_metricsExpanded),
-        behavior: HitTestBehavior.opaque,
-        child: Row(
-          children: [
-            const Text('📊', style: TextStyle(fontSize: 15)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                s.customCatsTitle,
-                style: TextStyle(
-                  color: accentLight,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
+          // ══ 3. МАКСИМАЛЬНЫЕ ЗНАЧЕНИЯ ══════════════════════════════
+          GestureDetector(
+            onTap: () =>
+                setState(() => _settingsExpanded = !_settingsExpanded),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                const Text('⚙️', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.maxValuesTitle,
+                    style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14),
+                  ),
                 ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                '${metrics.length}',
-                style: TextStyle(
-                  color: accentLight,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                AnimatedRotation(
+                  turns: _settingsExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(Icons.keyboard_arrow_down,
+                      color: Color(0xFF64748B), size: 20),
                 ),
-              ),
+              ],
             ),
-            const SizedBox(width: 8),
-            AnimatedRotation(
-              turns: _metricsExpanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(Icons.keyboard_arrow_down,
-                  color: accentLight, size: 20),
-            ),
-          ],
-        ),
-      ),
-      if (_metricsExpanded) ...[
-        const SizedBox(height: 12),
-        if (metrics.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-            ),
-            child: const Text(
-              'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-            ),
-          )
-        else
-          ...metrics.map((metric) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.03),
-                  borderRadius: BorderRadius.circular(14),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: metric.color.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: metric.color.withValues(alpha: 0.25)),
-                      ),
-                      child: Center(
-                        child: Text(metric.icon,
-                            style: const TextStyle(fontSize: 18)),
-                      ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 250),
+            crossFadeState: _settingsExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      s.maxValuesHint,
+                      style: const TextStyle(
+                          color: Color(0xFF64748B), fontSize: 11),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(height: 14),
+                  ...IbadatCategory.all.map((cat) {
+                    final ctrl = _settingsCtrls[cat.key]!;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
                         children: [
-                          Text(
-                            metric.localizedName(s.languageCode),
-                            style: const TextStyle(
-                              color: Color(0xFFE2E8F0),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
+                          Text(cat.icon,
+                              style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              s.categoryLabel(cat.key),
+                              style: const TextStyle(
+                                  color: Color(0xFFE2E8F0),
+                                  fontSize: 13),
                             ),
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${metric.maxValue} ${s.unitLabel(metric.unit)}',
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 12,
+                          SizedBox(
+                            width: 90,
+                            child: TextField(
+                              controller: ctrl,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(
+                                  color: Color(0xFFE2E8F0),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700),
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 8),
+                                filled: true,
+                                fillColor: Colors.white
+                                    .withValues(alpha: 0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.1)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.1)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: AccentProvider
+                                          .instance.current.accent),
+                                ),
+                                suffixText: s.unitLabel(cat.unit),
+                                suffixStyle: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 11),
+                              ),
                             ),
                           ),
                         ],
                       ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saveIbadatSettings,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            AccentProvider.instance.current.accentDark,
+                        foregroundColor: Colors.white,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: Text(s.save,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700)),
                     ),
-                    IconButton(
-                      onPressed: () => _deleteGroupMetric(metric),
-                      icon: const Icon(Icons.delete_outline,
-                          color: Color(0xFFEF4444), size: 20),
-                      tooltip: 'Удалить',
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          }),
-        const SizedBox(height: 2),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _showAddGroupMetricDialog,
-            icon: const Icon(Icons.add, size: 18),
-            label: Text(s.customCatAdd),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: accentLight,
-              side: BorderSide(color: accent.withValues(alpha: 0.35)),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
             ),
+            secondChild: const SizedBox.shrink(),
           ),
-        ),
-      ],
-    ];
+        ],
+      ),
+    );
   }
 
   Widget _buildCreateGroupCard() {
@@ -2902,136 +2840,6 @@ class _AdminScreenState extends State<AdminScreen> {
 
                 const Divider(color: Color(0xFF334155), height: 24),
 
-                Row(children: [
-                  const Text('📊', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(s.customCatsTitle,
-                        style: const TextStyle(
-                            color: Color(0xFFE2E8F0),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '${_adminMetrics.length}',
-                      style: TextStyle(
-                        color: AccentProvider.instance.current.accentLight,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 10),
-
-                if (_adminMetrics.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                    ),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _adminMetrics.length,
-                      itemBuilder: (_, i) {
-                        final m = _adminMetrics[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.08)),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: m.color.withValues(alpha: 0.16),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                        color: m.color.withValues(alpha: 0.25)),
-                                  ),
-                                  child: Center(
-                                    child: Text(m.icon,
-                                        style: const TextStyle(fontSize: 16)),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        m.localizedName(s.languageCode),
-                                        style: const TextStyle(
-                                          color: Color(0xFFE2E8F0),
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '${m.maxValue} ${s.unitLabel(m.unit)}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF94A3B8),
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: () async {
-                                    await _deleteAdminMetric(m);
-                                    setSheet(() {});
-                                  },
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Color(0xFFEF4444), size: 20),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await _showAddAdminMetricDialog();
-                      setSheet(() {});
-                    },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(s.customCatAdd),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AccentProvider.instance.current.accentLight,
-                      side: BorderSide(color: accent.withValues(alpha: 0.35)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-
-                const Divider(color: Color(0xFF334155), height: 24),
-
                 GestureDetector(
                   onTap: () async {
                     final picked = await showDatePicker(
@@ -3163,53 +2971,22 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  Future<void> _refreshGroupMetrics({String? groupId}) async {
-    final targetGroupId = groupId ?? _adminSelectedGroup?.id;
-    if (targetGroupId == null) return;
-    final requestVersion = ++_groupMetricsLoadVersion;
-    try {
-      final metrics = await _metricRepo.getForGroup(targetGroupId);
-      if (!mounted ||
-          requestVersion != _groupMetricsLoadVersion ||
-          _adminSelectedGroup?.id != targetGroupId) {
-        return;
-      }
-      setState(() => _groupMetrics = metrics);
-    } catch (e) {
-      if (!mounted ||
-          requestVersion != _groupMetricsLoadVersion ||
-          _adminSelectedGroup?.id != targetGroupId) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+  Future<void> _saveIbadatSettings() async {
+    final groupId = _adminSelectedGroup?.id;
+    if (groupId == null) return;
+    final maxValues = <String, int>{};
+    for (final cat in IbadatCategory.all) {
+      final v = int.tryParse(_settingsCtrls[cat.key]?.text.trim() ?? '') ?? 0;
+      maxValues[cat.key] = v > 0 ? v : cat.monthMax;
     }
-  }
-
-  Future<void> _showAddGroupMetricDialog() async {
-    final group = _adminSelectedGroup;
-    if (group == null) return;
-    final result = await showDialog<_GroupMetricDialogResult>(
-      context: context,
-      builder: (_) => const _AddGroupMetricDialog(),
-    );
-    if (result == null || !mounted) return;
     try {
-      await _metricRepo.create(
-        groupId: group.id,
-        nameRu: result.nameRu,
-        nameKk: result.nameKk,
-        icon: result.icon,
-        colorValue: _nextMetricColorValue(),
-        unit: result.unit,
-        maxValue: result.maxValue,
-        orderIndex: _nextMetricOrderIndex(),
+      await _settingsRepo.upsertSettings(
+        IbadatGroupSettings(groupId: groupId, maxValues: maxValues),
       );
-      await _refreshGroupMetrics(groupId: group.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Параметр добавлен'),
+          content: Text('✅ Сақталды'),
           backgroundColor: Color(0xFF059669),
         ),
       );
@@ -3220,211 +2997,298 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  Future<void> _deleteGroupMetric(GroupMetric metric) async {
-    if (metric.id == null) return;
-    final hasRecordedValues = await _metricRepo.hasRecordedValues(metric.id!);
-    if (!mounted || _adminSelectedGroup?.id != metric.groupId) return;
-    if (hasRecordedValues) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Нельзя удалить параметр, который уже использовался в отчётах'),
-          backgroundColor: Color(0xFFB45309),
-        ),
-      );
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Удалить параметр?',
-          style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Удалить "${metric.localizedName(S.of(context).languageCode)}"? Параметр исчезнет из группы без возможности восстановления.',
-          style: const TextStyle(color: Color(0xFFCBD5E1)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Color(0xFF64748B))),
+  Widget _buildIbadatSettingsCard() {
+    if (_isSuperAdmin || _adminSelectedGroup == null) return const SizedBox.shrink();
+    final s = S.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          // Header — tap to toggle
+          GestureDetector(
+            onTap: () => setState(() => _settingsExpanded = !_settingsExpanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Text('⚙️', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      s.maxValuesTitle,
+                      style: TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _settingsExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down,
+                        color: Color(0xFF64748B), size: 20),
+                  ),
+                ],
+              ),
+            ),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить', style: TextStyle(color: Color(0xFFEF4444))),
+          // Collapsible content
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 250),
+            crossFadeState: _settingsExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      s.maxValuesHint,
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ...IbadatCategory.all.map((cat) {
+                    final ctrl = _settingsCtrls[cat.key]!;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        children: [
+                          Text(cat.icon,
+                              style: const TextStyle(fontSize: 18)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              s.categoryLabel(cat.key),
+                              style: const TextStyle(
+                                  color: Color(0xFFE2E8F0), fontSize: 13),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 90,
+                            child: TextField(
+                              controller: ctrl,
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(
+                                  color: Color(0xFFE2E8F0),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700),
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 8),
+                                filled: true,
+                                fillColor:
+                                    Colors.white.withValues(alpha: 0.05),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.1)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.white
+                                          .withValues(alpha: 0.1)),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: AccentProvider
+                                          .instance.current.accent),
+                                ),
+                                suffixText: s.unitLabel(cat.unit),
+                                suffixStyle: const TextStyle(
+                                    color: Color(0xFF64748B), fontSize: 11),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _saveIbadatSettings,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            AccentProvider.instance.current.accentDark,
+                        foregroundColor: Colors.white,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: Text(s.save,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            secondChild: const SizedBox.shrink(),
           ),
         ],
       ),
     );
-    if (confirmed != true || !mounted || _adminSelectedGroup?.id != metric.groupId) {
-      return;
-    }
-    try {
-      await _metricRepo.delete(metric.id!);
-      await _refreshGroupMetrics(groupId: metric.groupId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Параметр удалён'),
-          backgroundColor: Color(0xFF374151),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
   }
 
-  int _nextMetricOrderIndex() {
-    if (_groupMetrics.isEmpty) return 0;
-    final maxOrderIndex = _groupMetrics
-        .map((metric) => metric.orderIndex)
-        .reduce((current, next) => current > next ? current : next);
-    return maxOrderIndex + 1;
+  Widget _buildCustomCategoriesCard() {
+    if (_isSuperAdmin || _adminSelectedGroup == null) return const SizedBox.shrink();
+    final accent = AccentProvider.instance.current.accent;
+    final s = S.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _customCatsExpanded = !_customCatsExpanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Text('➕', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      s.customCatsTitle,
+                      style: const TextStyle(
+                        color: Color(0xFFE2E8F0),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _customCatsExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down,
+                        color: Color(0xFF64748B), size: 20),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 250),
+            crossFadeState: _customCatsExpanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.customCatsHint,
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                  ),
+                  const SizedBox(height: 12),
+                  // Existing custom categories
+                  ..._customCategories.map((cat) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Text(cat.icon, style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(cat.name,
+                                  style: const TextStyle(
+                                      color: Color(0xFFE2E8F0), fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text('макс: ${cat.weekMax} ${S.of(context).unitLabel(cat.unit)}${S.of(context).perWeek}',
+                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            await _customCatRepo.delete(cat.id);
+                            final updated = await _customCatRepo.getForGroup(_adminSelectedGroup!.id);
+                            if (mounted) {
+                              setState(() => _customCategories = updated);
+                              widget.onGroupChanged?.call();
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDC2626).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.delete_outline, color: Color(0xFFDC2626), size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+                  if (_customCategories.isNotEmpty) const SizedBox(height: 8),
+                  // Add new category button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showAddCustomCategoryDialog(),
+                      icon: Icon(Icons.add, color: accent, size: 18),
+                      label: Text(s.customCatAdd,
+                          style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w600)),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: accent.withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            secondChild: const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _refreshAdminMetrics() async {
-    try {
-      final metrics = await _metricRepo.getForAdmin(widget.profile.id);
-      if (!mounted) return;
-      setState(() => _adminMetrics = metrics);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
-  }
-
-  Future<void> _showAddAdminMetricDialog() async {
-    final result = await showDialog<_GroupMetricDialogResult>(
+  Future<void> _showAddCustomCategoryDialog() async {
+    final result = await showDialog<_CatDialogResult>(
       context: context,
-      useRootNavigator: true,
-      builder: (_) => const _AddGroupMetricDialog(),
+      builder: (_) => _AddCatDialog(s: S.of(context)),
     );
     if (result == null || !mounted) return;
-    try {
-      await _metricRepo.create(
-        adminId: widget.profile.id,
-        nameRu: result.nameRu,
-        nameKk: result.nameKk,
-        icon: result.icon,
-        colorValue: _nextAdminMetricColorValue(),
-        unit: result.unit,
-        maxValue: result.maxValue,
-        orderIndex: _nextAdminMetricOrderIndex(),
-      );
-      await _refreshAdminMetrics();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Параметр добавлен'),
-          backgroundColor: Color(0xFF059669),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
-  }
-
-  Future<void> _deleteAdminMetric(GroupMetric metric) async {
-    if (metric.id == null) return;
-    final hasRecordedValues = await _metricRepo.hasRecordedValues(metric.id!);
+    final groupId = _adminSelectedGroup!.id;
+    await _customCatRepo.create(
+      groupId: groupId,
+      name: result.name,
+      icon: result.icon,
+      unit: result.unit,
+      weekMax: result.weekMax,
+      orderIndex: _customCategories.length,
+    );
+    final updated = await _customCatRepo.getForGroup(groupId);
     if (!mounted) return;
-    if (hasRecordedValues) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Нельзя удалить параметр, который уже использовался в отчётах'),
-          backgroundColor: Color(0xFFB45309),
-        ),
-      );
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Удалить параметр?',
-          style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Удалить "${metric.localizedName(S.of(context).languageCode)}"? Параметр исчезнет без возможности восстановления.',
-          style: const TextStyle(color: Color(0xFFCBD5E1)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Color(0xFF64748B))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить', style: TextStyle(color: Color(0xFFEF4444))),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    try {
-      await _metricRepo.delete(metric.id!);
-      await _refreshAdminMetrics();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Параметр удалён'),
-          backgroundColor: Color(0xFF374151),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
-  }
-
-  int _nextAdminMetricOrderIndex() {
-    if (_adminMetrics.isEmpty) return 0;
-    final maxOrderIndex = _adminMetrics
-        .map((metric) => metric.orderIndex)
-        .reduce((current, next) => current > next ? current : next);
-    return maxOrderIndex + 1;
-  }
-
-  int _nextAdminMetricColorValue() {
-    final used = _adminMetrics.map((metric) => metric.colorValue).toSet();
-    for (final color in _metricColorPalette) {
-      if (!used.contains(color)) return color;
-    }
-    return _metricColorPalette[_adminMetrics.length % _metricColorPalette.length];
-  }
-
-  static const List<int> _metricColorPalette = [
-    0xFF0D9488,
-    0xFF7C3AED,
-    0xFFDB2777,
-    0xFFF59E0B,
-    0xFF2563EB,
-    0xFF059669,
-    0xFFE11D48,
-    0xFF8B5CF6,
-    0xFF0EA5E9,
-    0xFF10B981,
-    0xFFF97316,
-    0xFFEC4899,
-  ];
-
-  int _nextMetricColorValue() {
-    final used = _groupMetrics.map((metric) => metric.colorValue).toSet();
-    for (final color in _metricColorPalette) {
-      if (!used.contains(color)) return color;
-    }
-    return _metricColorPalette[_groupMetrics.length % _metricColorPalette.length];
+    setState(() => _customCategories = updated);
+    widget.onGroupChanged?.call();
   }
 
   Widget _buildColorPicker() {
@@ -3619,268 +3483,6 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 }
 
-class _GroupMetricDialogResult {
-  final String nameRu;
-  final String nameKk;
-  final String icon;
-  final String unit;
-  final int maxValue;
-
-  const _GroupMetricDialogResult({
-    required this.nameRu,
-    required this.nameKk,
-    required this.icon,
-    required this.unit,
-    required this.maxValue,
-  });
-}
-
-class _AddGroupMetricDialog extends StatefulWidget {
-  const _AddGroupMetricDialog();
-
-  @override
-  State<_AddGroupMetricDialog> createState() => _AddGroupMetricDialogState();
-}
-
-class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
-  final _nameRuCtrl = TextEditingController();
-  final _nameKkCtrl = TextEditingController();
-  final _maxCtrl = TextEditingController(text: '10');
-  String _selectedIcon = '📖';
-  String _selectedUnit = 'рет';
-  String? _errorText;
-
-  static const _icons = [
-    '📖',
-    '📚',
-    '📜',
-    '⭐',
-    '🟩',
-    '🎧',
-    '🌹',
-    '🤲',
-    '🌙',
-    '📿',
-    '🕌',
-    '☪️',
-    '🕋',
-    '✨',
-    '💧',
-    '🔥',
-    '❤️',
-  ];
-
-  static const _units = ['рет', 'бет', 'мін', 'күн'];
-
-  @override
-  void dispose() {
-    _nameRuCtrl.dispose();
-    _nameKkCtrl.dispose();
-    _maxCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final s = S.of(context);
-    final nameRu = _nameRuCtrl.text.trim();
-    final nameKk = _nameKkCtrl.text.trim();
-    final maxValue = int.tryParse(_maxCtrl.text.trim());
-    if (nameRu.isEmpty && nameKk.isEmpty) {
-      setState(() => _errorText = s.customCatNameLabel);
-      return;
-    }
-    if (maxValue == null || maxValue <= 0) {
-      setState(() => _errorText = s.customCatMaxLabel);
-      return;
-    }
-    // If one language is empty, fallback to the other so both are populated.
-    final resolvedRu = nameRu.isNotEmpty ? nameRu : nameKk;
-    final resolvedKk = nameKk.isNotEmpty ? nameKk : nameRu;
-    Navigator.of(context).pop(
-      _GroupMetricDialogResult(
-        nameRu: resolvedRu,
-        nameKk: resolvedKk,
-        icon: _selectedIcon,
-        unit: _selectedUnit,
-        maxValue: maxValue,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = S.of(context);
-    final accent = AccentProvider.instance.current.accent;
-    return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      title: Text(
-        s.customCatNewTitle,
-        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${s.customCatNameLabel} (RU)',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameRuCtrl,
-              style: const TextStyle(color: Color(0xFFE2E8F0)),
-              onChanged: (_) {
-                if (_errorText != null) setState(() => _errorText = null);
-              },
-              decoration: InputDecoration(
-                hintText: s.customCatNameHint,
-                hintStyle: const TextStyle(color: Color(0xFF475569)),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: accent),
-                ),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${s.customCatNameLabel} (KK)',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameKkCtrl,
-              style: const TextStyle(color: Color(0xFFE2E8F0)),
-              onChanged: (_) {
-                if (_errorText != null) setState(() => _errorText = null);
-              },
-              decoration: InputDecoration(
-                hintText: s.customCatNameHint,
-                hintStyle: const TextStyle(color: Color(0xFF475569)),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: accent),
-                ),
-                isDense: true,
-                errorText: _errorText,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              s.customCatIconLabel,
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _icons.map((icon) {
-                final selected = _selectedIcon == icon;
-                return ChoiceChip(
-                  label: Text(icon, style: const TextStyle(fontSize: 18)),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _selectedIcon = icon),
-                  selectedColor: accent.withValues(alpha: 0.2),
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                  side: BorderSide(
-                    color: selected ? accent : Colors.white.withValues(alpha: 0.06),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              s.customCatUnitLabel,
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _units.map((unit) {
-                final selected = _selectedUnit == unit;
-                return ChoiceChip(
-                  label: Text(s.unitLabel(unit)),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _selectedUnit = unit),
-                  selectedColor: accent.withValues(alpha: 0.2),
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
-                  labelStyle: TextStyle(
-                    color: selected ? accent : const Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  side: BorderSide(
-                    color: selected ? accent : Colors.white.withValues(alpha: 0.06),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              s.customCatMaxLabel,
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-            ),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _maxCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Color(0xFFE2E8F0)),
-              decoration: InputDecoration(
-                hintText: '10',
-                hintStyle: const TextStyle(color: Color(0xFF475569)),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: accent),
-                ),
-                isDense: true,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(s.cancel, style: const TextStyle(color: Color(0xFF94A3B8))),
-        ),
-        ElevatedButton(
-          onPressed: _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AccentProvider.instance.current.accentDark,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          child: Text(s.add, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ),
-      ],
-    );
-  }
-}
-
 class _AdminLangBtn extends StatelessWidget {
   final String label;
   final String flag;
@@ -3934,3 +3536,173 @@ class _AdminLangBtn extends StatelessWidget {
   }
 }
 
+// ── Add custom category dialog ────────────────────────────────────────────────
+
+class _CatDialogResult {
+  final String name, icon, unit;
+  final int weekMax;
+  const _CatDialogResult({required this.name, required this.icon, required this.unit, required this.weekMax});
+}
+
+class _AddCatDialog extends StatefulWidget {
+  final AppStrings s;
+  const _AddCatDialog({required this.s});
+
+  @override
+  State<_AddCatDialog> createState() => _AddCatDialogState();
+}
+
+class _AddCatDialogState extends State<_AddCatDialog> {
+  final _nameCtrl = TextEditingController();
+  final _maxCtrl = TextEditingController(text: '100');
+  String _icon = '⭐';
+  String _unit = 'рет';
+  String? _error;
+
+  static const _icons = [
+    '🕌', '🕋', '📿', '🌙', '⭐', '🤲', '🙏', '☪️',
+    '📖', '📚', '✍️', '🖊️',
+    '👨‍👩‍👧‍👦', '👶', '🧒', '👨‍👧', '🏠', '❤️',
+    '🕊️', '💎', '🌹', '🌱', '🌿',
+    '💧', '🍃', '🌾', '💰',
+  ];
+  static const _units = ['рет', 'бет', 'мін', 'күн', 'сағ'];
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _maxCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = widget.s.customCatNameHint);
+      return;
+    }
+    final weekMax = int.tryParse(_maxCtrl.text.trim()) ?? 100;
+    Navigator.of(context).pop(_CatDialogResult(name: name, icon: _icon, unit: _unit, weekMax: weekMax));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.s;
+    final accent = AccentProvider.instance.current;
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E293B),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(s.customCatNewTitle,
+          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(s.customCatIconLabel, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _icons.map((icon) => GestureDetector(
+                onTap: () => setState(() => _icon = icon),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _icon == icon ? accent.accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _icon == icon ? accent.accent : Colors.transparent),
+                  ),
+                  child: Center(child: Text(icon, style: const TextStyle(fontSize: 20))),
+                ),
+              )).toList(),
+            ),
+            const SizedBox(height: 16),
+            Text(s.customCatNameLabel, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _nameCtrl,
+              style: const TextStyle(color: Color(0xFFE2E8F0)),
+              onChanged: (_) { if (_error != null) setState(() => _error = null); },
+              decoration: InputDecoration(
+                hintText: s.customCatNameHint,
+                hintStyle: const TextStyle(color: Color(0xFF475569)),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: _error != null ? const Color(0xFFEF4444) : Colors.white.withValues(alpha: 0.1))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: _error != null ? const Color(0xFFEF4444) : accent.accent)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                errorText: _error,
+                errorStyle: const TextStyle(color: Color(0xFFEF4444), fontSize: 11),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(s.customCatUnitLabel, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: _units.map((u) => GestureDetector(
+                onTap: () => setState(() => _unit = u),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _unit == u ? accent.accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _unit == u ? accent.accent : Colors.transparent),
+                  ),
+                  child: Text(s.unitLabel(u), style: TextStyle(
+                    color: _unit == u ? accent.accent : const Color(0xFF94A3B8),
+                    fontSize: 13, fontWeight: FontWeight.w600,
+                  )),
+                ),
+              )).toList(),
+            ),
+            const SizedBox(height: 16),
+            Text(s.customCatMaxLabel, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _maxCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Color(0xFFE2E8F0)),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: accent.accent)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                suffixText: s.unitLabel(_unit),
+                suffixStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(s.cancel, style: const TextStyle(color: Color(0xFF64748B))),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: accent.accentDark,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: Text(s.add, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ),
+      ],
+    );
+  }
+}

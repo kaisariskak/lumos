@@ -3,14 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_strings.dart';
 
-import '../../models/group_metric.dart';
+import '../../models/custom_category.dart';
+import '../../models/ibadat_category.dart';
 import '../../models/ibadat_period.dart';
 import '../../theme/accent_provider.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
-import '../../repositories/group_metric_repository.dart';
+import '../../repositories/custom_category_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
-import '../../reporting/report_progress.dart';
 import '../../widgets/ring_indicator.dart';
 
 class DetailScreen extends StatefulWidget {
@@ -41,15 +41,13 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   late final IbadatReportRepository _repo;
-  late final GroupMetricRepository _metricRepo;
+  late final CustomCategoryRepository _customRepo;
   late int _periodIdx;
   IbadatReport? _report;
-  List<GroupMetric> _metrics = [];
+  List<CustomCategory> _customCategories = [];
   bool _isLoading = false;
 
   bool get _isPeriodMode => widget.periods.isNotEmpty;
-  List<GroupMetric> get _visibleMetrics =>
-      _metrics.where((metric) => metric.id != null).toList();
 
   IbadatPeriod? get _currentPeriod =>
       _isPeriodMode ? widget.periods[_periodIdx.clamp(0, widget.periods.length - 1)] : null;
@@ -58,27 +56,12 @@ class _DetailScreenState extends State<DetailScreen> {
   void initState() {
     super.initState();
     _repo = IbadatReportRepository(Supabase.instance.client);
-    _metricRepo = GroupMetricRepository(Supabase.instance.client);
+    _customRepo = CustomCategoryRepository(Supabase.instance.client);
     _periodIdx = widget.initialPeriodIdx.clamp(0, widget.periods.isEmpty ? 0 : widget.periods.length - 1);
     _report = widget.report;
-    _loadMetrics();
-  }
-
-  Future<void> _loadMetrics() async {
-    try {
-      final metrics = await _metricRepo.getForGroup(widget.groupId);
-      if (mounted) {
-        setState(() {
-          _metrics = metrics;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _metrics = [];
-        });
-      }
-    }
+    _customRepo.getForGroup(widget.groupId).then((cats) {
+      if (mounted) setState(() => _customCategories = cats);
+    });
   }
 
   Future<void> _loadPeriodReport() async {
@@ -115,35 +98,63 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   int _getValue(String key) {
-    return _effectiveReport()?.getValue(key) ?? 0;
+    if (_isPeriodMode) return _report?.getValue(key) ?? 0;
+    if (widget.isWeekMode) return widget.report?.getValue(key) ?? 0;
+    return widget.monthReports.fold(0, (s, r) => s + r.getValue(key));
   }
 
-  IbadatReport? _effectiveReport() {
-    if (_isPeriodMode) return _report;
-    if (widget.isWeekMode) return widget.report;
-    if (widget.monthReports.isNotEmpty) {
-      final aggregate = <String, int>{};
-      for (final report in widget.monthReports) {
-        for (final entry in report.metricValues.entries) {
-          aggregate[entry.key] = (aggregate[entry.key] ?? 0) + entry.value;
-        }
-      }
-      final source = widget.monthReports.first;
-      return IbadatReport(
-        userId: source.userId,
-        groupId: source.groupId,
-        month: source.month,
-        year: source.year,
-        metricValues: aggregate,
-      );
-    }
-    return widget.report;
+  Widget _buildCatCard({
+    required String icon,
+    required String label,
+    required int val,
+    required double pct,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 22)),
+              CategoryRing(value: pct, color: color),
+            ],
+          ),
+          const Spacer(),
+          Text('$val', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: color)),
+          Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: Stack(
+              children: [
+                Container(height: 4, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(2))),
+                FractionallySizedBox(
+                  widthFactor: pct,
+                  child: Container(height: 4, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   double _calcScore() {
-    final report = _effectiveReport();
-    if (report == null) return 0;
-    return reportProgress(report, _visibleMetrics);
+    double sum = 0;
+    for (final cat in IbadatCategory.all) {
+      final max = widget.isWeekMode ? cat.weekMax : cat.monthMax;
+      sum += (_getValue(cat.key) / max).clamp(0.0, 1.0);
+    }
+    return sum / IbadatCategory.all.length;
   }
 
   @override
@@ -281,88 +292,40 @@ class _DetailScreenState extends State<DetailScreen> {
                             RingIndicator(value: score, size: 88),
                             const SizedBox(height: 20),
 
-                            // Metric grid
-                            if (_visibleMetrics.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 24),
-                                child: Center(
-                                  child: Text(
-                                    'Показатели ещё не настроены',
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.35),
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              GridView.count(
-                                crossAxisCount: 2,
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                                childAspectRatio: 1.3,
-                                children: _visibleMetrics.map((metric) {
-                                  final val = _getValue(metric.id!);
-                                  final pct = metricProgress(val, metric.maxValue);
-
-                                  return Container(
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.03),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(metric.icon, style: const TextStyle(fontSize: 22)),
-                                            CategoryRing(value: pct, color: metric.color),
-                                          ],
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          '$val',
-                                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: metric.color),
-                                        ),
-                                        Text(
-                                          '${metric.localizedName(S.of(context).languageCode)} · ${S.of(context).unitLabel(metric.unit)}',
-                                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(2),
-                                          child: Stack(
-                                            children: [
-                                              Container(
-                                                height: 4,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white.withValues(alpha: 0.06),
-                                                  borderRadius: BorderRadius.circular(2),
-                                                ),
-                                              ),
-                                              FractionallySizedBox(
-                                                widthFactor: pct,
-                                                child: Container(
-                                                  height: 4,
-                                                  decoration: BoxDecoration(
-                                                    color: metric.color,
-                                                    borderRadius: BorderRadius.circular(2),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                            // Category grid
+                            GridView.count(
+                              crossAxisCount: 2,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 1.3,
+                              children: [
+                                ...IbadatCategory.all.map((cat) {
+                                  final val = _getValue(cat.key);
+                                  final max = widget.isWeekMode ? cat.weekMax : cat.monthMax;
+                                  final pct = (val / max).clamp(0.0, 1.0);
+                                  return _buildCatCard(
+                                    icon: cat.icon,
+                                    label: '${S.of(context).categoryLabel(cat.key)} · ${S.of(context).unitLabel(cat.unit)}',
+                                    val: val,
+                                    pct: pct,
+                                    color: cat.color,
                                   );
-                                }).toList(),
-                              ),
+                                }),
+                                ..._customCategories.map((cat) {
+                                  final val = _report?.getCustomValue(cat.id) ?? 0;
+                                  final pct = (val / cat.weekMax).clamp(0.0, 1.0);
+                                  return _buildCatCard(
+                                    icon: cat.icon,
+                                    label: '${cat.name} · ${S.of(context).unitLabel(cat.unit)}',
+                                    val: val,
+                                    pct: pct,
+                                    color: const Color(0xFF6366F1),
+                                  );
+                                }),
+                              ],
+                            ),
                           ],
                         ),
                       ),
