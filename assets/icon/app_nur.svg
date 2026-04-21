@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <clipPath id="rounded">
+      <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180"/>
+    </clipPath>
+
+    <radialGradient id="bg" cx="30%" cy="70%" r="95%">
+      <stop offset="0%" stop-color="#0A0A0F"/>
+      <stop offset="60%" stop-color="#050508"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+
+    <linearGradient id="beamCore" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="12%" stop-color="#FFF3D0" stop-opacity="1"/>
+      <stop offset="35%" stop-color="#FFD369" stop-opacity="0.95"/>
+      <stop offset="65%" stop-color="#F5B82E" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#F5B82E" stop-opacity="0"/>
+    </linearGradient>
+
+    <radialGradient id="cornerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="35%" stop-color="#FFEFC2" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#FFD369" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="sparkleGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#FFD369" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="blurLg" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="45"/>
+    </filter>
+    <filter id="blurMd" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="blurSm">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <filter id="sparkle">
+      <feGaussianBlur stdDeviation="1.2"/>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#rounded)">
+    <!-- Background -->
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+
+    <!-- Beam: three layered rotated ellipses, rotation -45° around (512,512) so beam goes from upper-right to lower-left -->
+    <g transform="rotate(-45 512 512)">
+      <!-- Outer bloom halo -->
+      <ellipse cx="700" cy="512" rx="650" ry="230" fill="url(#beamCore)" opacity="0.35" filter="url(#blurLg)"/>
+      <!-- Middle bright layer -->
+      <ellipse cx="700" cy="512" rx="600" ry="110" fill="url(#beamCore)" opacity="0.75" filter="url(#blurMd)"/>
+      <!-- Core bright streak -->
+      <ellipse cx="700" cy="512" rx="520" ry="40" fill="url(#beamCore)" opacity="1" filter="url(#blurSm)"/>
+    </g>
+
+    <!-- Corner light source at top-right -->
+    <circle cx="910" cy="130" r="220" fill="url(#cornerGlow)" opacity="0.9" filter="url(#blurMd)"/>
+    <circle cx="910" cy="130" r="70" fill="#FFFFFF" opacity="0.95" filter="url(#blurSm)"/>
+
+    <!-- Dim star dots (shadow side — low-opacity white for depth) -->
+    <g fill="#FFFFFF" opacity="0.25">
+      <circle cx="120" cy="210" r="2.5"/>
+      <circle cx="210" cy="160" r="1.5"/>
+      <circle cx="300" cy="190" r="2"/>
+      <circle cx="160" cy="350" r="1.5"/>
+      <circle cx="250" cy="410" r="2"/>
+      <circle cx="90" cy="500" r="1.5"/>
+      <circle cx="180" cy="560" r="2"/>
+      <circle cx="900" cy="500" r="1.5"/>
+      <circle cx="860" cy="610" r="2"/>
+      <circle cx="940" cy="760" r="1.5"/>
+      <circle cx="820" cy="810" r="2"/>
+      <circle cx="700" cy="880" r="1.5"/>
+      <circle cx="560" cy="920" r="2"/>
+      <circle cx="410" cy="900" r="1.5"/>
+      <circle cx="320" cy="940" r="2"/>
+    </g>
+
+    <!-- White/light-blue dots (along and around beam) -->
+    <g fill="#FFFFFF">
+      <circle cx="880" cy="150" r="3"/>
+      <circle cx="840" cy="220" r="2"/>
+      <circle cx="780" cy="180" r="3"/>
+      <circle cx="760" cy="280" r="2"/>
+      <circle cx="700" cy="240" r="3"/>
+      <circle cx="680" cy="360" r="2"/>
+      <circle cx="590" cy="450" r="3"/>
+      <circle cx="550" cy="400" r="2"/>
+      <circle cx="470" cy="570" r="2"/>
+      <circle cx="440" cy="520" r="3"/>
+      <circle cx="390" cy="560" r="2"/>
+      <circle cx="360" cy="700" r="3"/>
+      <circle cx="340" cy="650" r="2"/>
+      <circle cx="300" cy="750" r="3"/>
+      <circle cx="270" cy="720" r="2"/>
+      <circle cx="220" cy="820" r="3"/>
+      <circle cx="200" cy="780" r="2"/>
+      <circle cx="930" cy="80" r="2"/>
+      <circle cx="850" cy="105" r="2"/>
+      <circle cx="150" cy="890" r="2"/>
+    </g>
+    <g fill="#C7D2FE">
+      <circle cx="640" cy="330" r="4"/>
+      <circle cx="520" cy="480" r="3"/>
+      <circle cx="420" cy="600" r="4"/>
+      <circle cx="80" cy="850" r="2"/>
+      <circle cx="920" cy="200" r="2"/>
+    </g>
+
+    <!-- Gold 4-point sparkle stars -->
+    <g fill="#FFD369" filter="url(#sparkle)">
+      <!-- sparkle at (820, 200), size 12 -->
+      <path d="M820,188 L822,198 L832,200 L822,202 L820,212 L818,202 L808,200 L818,198 Z"/>
+      <!-- sparkle at (650, 370), size 14 -->
+      <path d="M650,356 L653,367 L664,370 L653,373 L650,384 L647,373 L636,370 L647,367 Z"/>
+      <!-- sparkle at (380, 640), size 10 -->
+      <path d="M380,630 L382,638 L390,640 L382,642 L380,650 L378,642 L370,640 L378,638 Z"/>
+      <!-- sparkle at (250, 770), size 8 -->
+      <path d="M250,762 L252,768 L258,770 L252,772 L250,778 L248,772 L242,770 L248,768 Z"/>
+      <!-- sparkle at (770, 270), size 10 -->
+      <path d="M770,260 L772,268 L780,270 L772,272 L770,280 L768,272 L760,270 L768,268 Z"/>
+    </g>
+
+    <!-- Accent: 8-point star at (510, 510) -->
+    <g transform="translate(510 510)">
+      <circle r="35" fill="url(#sparkleGlow)" opacity="0.8"/>
+      <g fill="#FFFFFF">
+        <rect x="-16" y="-16" width="32" height="32" transform="rotate(0)"/>
+        <rect x="-16" y="-16" width="32" height="32" transform="rotate(45)"/>
+      </g>
+      <g fill="#FFD369">
+        <rect x="-8" y="-8" width="16" height="16" transform="rotate(0)"/>
+        <rect x="-8" y="-8" width="16" height="16" transform="rotate(45)"/>
+      </g>
+    </g>
+  </g>
+</svg>
