@@ -162,6 +162,7 @@ class AppStrings {
   final String viewDetail;
   final String reportSaved;
   final String reportSaving;
+  final String manualValueTitle;
 
   // ── Waiting screen ─────────────────────────────────────
   final String waitingForGroup;
@@ -369,6 +370,7 @@ class AppStrings {
     required this.viewDetail,
     required this.reportSaved,
     required this.reportSaving,
+    required this.manualValueTitle,
     required this.waitingForGroup,
     required this.waitingDesc,
     required this.inviteCodeTitle,
@@ -576,6 +578,7 @@ const _kk = AppStrings(
   viewDetail: 'Толығырақ',
   reportSaved: 'Есеп сақталды ✅',
   reportSaving: 'Сақталуда...',
+  manualValueTitle: 'Мәнді енгізу',
 
   waitingForGroup: 'Топқа қосылуды күтіңіз',
   waitingDesc: 'Администратор сізді топқа қосады',
@@ -783,6 +786,7 @@ const _ru = AppStrings(
   viewDetail: 'Подробнее',
   reportSaved: 'Отчёт сохранён ✅',
   reportSaving: 'Сохраняется...',
+  manualValueTitle: 'Ввести значение',
 
   waitingForGroup: 'Ожидайте добавления в группу',
   waitingDesc: 'Администратор добавит вас в группу',
@@ -839,6 +843,13 @@ const _ru = AppStrings(
 // ── Category / Unit helpers ────────────────────────────────────────────────
 
 extension AppStringsX on AppStrings {
+  String manualValueHint(int max, String unit) {
+    if (languageCode == 'ru') {
+      return 'Обычный диапазон: 0..$max $unit';
+    }
+    return 'Әдеттегі аралық: 0..$max $unit';
+  }
+
   String categoryLabel(String key) {
     if (languageCode == 'ru') {
       switch (key) {
