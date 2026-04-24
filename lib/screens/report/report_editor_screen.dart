@@ -13,6 +13,7 @@ import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../theme/accent_provider.dart';
 import '../../utils/week_utils.dart';
+import 'manual_value_dialog.dart';
 
 class ReportEditorScreen extends StatefulWidget {
   final IbadatProfile profile;
@@ -480,19 +481,38 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                       ? () => setState(() => _report.setValue(metricId, value - 1))
                       : null,
                 ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 18),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: metric.color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$value',
-                    style: TextStyle(
-                      color: metric.color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 20,
+                GestureDetector(
+                  onTap: () async {
+                    final result = await showDialog<int>(
+                      context: context,
+                      builder: (_) => ManualValueDialog(
+                        current: value,
+                        unitLabel: s.unitLabel(metric.unit),
+                        color: metric.color,
+                        title: s.manualValueTitle,
+                        hint: s.manualValueHint(metric.maxValue, s.unitLabel(metric.unit)),
+                        saveLabel: s.save,
+                        cancelLabel: s.cancel,
+                      ),
+                    );
+                    if (result != null && mounted) {
+                      setState(() => _report.setValue(metricId, result));
+                    }
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 18),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: metric.color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$value',
+                      style: TextStyle(
+                        color: metric.color,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                      ),
                     ),
                   ),
                 ),
