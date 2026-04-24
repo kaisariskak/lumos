@@ -20,5 +20,7 @@ double reportProgress(IbadatReport report, Iterable<GroupMetric> metrics) {
 List<int> quickValuesFor(GroupMetric metric) {
   return [0.25, 0.5, 0.75, 1.0]
       .map((fraction) => (metric.maxValue * fraction).round())
-      .toList();
+      .toSet()
+      .toList()
+    ..sort();
 }

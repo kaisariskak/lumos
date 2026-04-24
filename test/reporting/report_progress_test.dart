@@ -53,4 +53,10 @@ void main() {
 
     expect(quickValuesFor(metric), [10, 20, 30, 40]);
   });
+
+  test('deduplicates quick values when max value is small', () {
+    expect(quickValuesFor(GroupMetric.test(maxValue: 3)), [1, 2, 3]);
+    expect(quickValuesFor(GroupMetric.test(maxValue: 2)), [1, 2]);
+    expect(quickValuesFor(GroupMetric.test(maxValue: 1)), [0, 1]);
+  });
 }
