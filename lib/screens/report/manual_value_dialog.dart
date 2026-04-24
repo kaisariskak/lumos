@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 class ManualValueDialog extends StatefulWidget {
   final int current;
-  final int max;
   final String unitLabel;
   final Color color;
   final String title;
@@ -14,7 +13,6 @@ class ManualValueDialog extends StatefulWidget {
   const ManualValueDialog({
     super.key,
     required this.current,
-    required this.max,
     required this.unitLabel,
     required this.color,
     required this.title,
@@ -35,6 +33,7 @@ class _ManualValueDialogState extends State<ManualValueDialog> {
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.current.toString());
+    _isValid = widget.current >= 0;
     _ctrl.addListener(_onChanged);
   }
 

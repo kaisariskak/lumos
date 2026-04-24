@@ -18,7 +18,6 @@ void main() {
             context: context,
             builder: (_) => const ManualValueDialog(
               current: 7,
-              max: 10,
               unitLabel: 'стр.',
               color: Color(0xFF6366F1),
               title: 'Ввести значение',
@@ -48,7 +47,6 @@ void main() {
             context: context,
             builder: (_) => const ManualValueDialog(
               current: 5,
-              max: 10,
               unitLabel: 'раз',
               color: Color(0xFF6366F1),
               title: 'T',
@@ -84,7 +82,6 @@ void main() {
               context: context,
               builder: (_) => const ManualValueDialog(
                 current: 3,
-                max: 10,
                 unitLabel: 'раз',
                 color: Color(0xFF6366F1),
                 title: 'T',
@@ -121,7 +118,6 @@ void main() {
               context: context,
               builder: (_) => const ManualValueDialog(
                 current: 3,
-                max: 10,
                 unitLabel: 'раз',
                 color: Color(0xFF6366F1),
                 title: 'T',
@@ -143,5 +139,41 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(result, isNull);
+  });
+
+  testWidgets('accepts value above the admin-configured max', (tester) async {
+    int? result;
+    await tester.pumpWidget(_host(
+      Builder(builder: (context) {
+        return ElevatedButton(
+          onPressed: () async {
+            result = await showDialog<int>(
+              context: context,
+              builder: (_) => const ManualValueDialog(
+                current: 5,
+                unitLabel: 'стр.',
+                color: Color(0xFF6366F1),
+                title: 'T',
+                hint: 'Обычный диапазон: 0..10 стр.',
+                saveLabel: 'Сохранить',
+                cancelLabel: 'Отмена',
+              ),
+            );
+          },
+          child: const Text('open'),
+        );
+      }),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '9999');
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Сохранить'));
+    await tester.pumpAndSettle();
+
+    expect(result, 9999);
   });
 }
