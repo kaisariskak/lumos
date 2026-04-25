@@ -518,6 +518,9 @@ class _PaymentTile extends StatelessWidget {
   });
 
   bool _isPaid() {
+    // Доп. платёж всегда оплачен — отдельная категория сверх месячного взноса.
+    if (payment.paidExtra) return true;
+
     final date = payment.paymentDate;
     final now = DateTime.now();
     final isCurrentMonth = date != null &&

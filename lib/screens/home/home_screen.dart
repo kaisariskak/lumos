@@ -23,12 +23,10 @@ class _GroupSection {
   List<IbadatProfile> members = [];
   List<GroupMetric> metrics = [];
   List<IbadatPeriod> periods = [];        // group periods (for members)
-  List<IbadatPeriod> adminPeriods = [];   // admin's personal periods
   int periodIdx = 0;
   // month → userId → report
   Map<int, Map<String, IbadatReport>> trendReports = {};
   Map<String, IbadatReport> monthlyReports = {};
-  IbadatReport? adminReport;
   bool expanded = false;
 
   _GroupSection({required this.group});
@@ -42,7 +40,6 @@ class _GroupSection {
       : DateTime.now().year;
 
   bool get isPeriodMode => periods.isNotEmpty;
-  bool get hasAdminPeriods => adminPeriods.isNotEmpty;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,6 +73,9 @@ class HomeScreenState extends State<HomeScreen> {
   // Admin: list of group sections
   List<_GroupSection> _sections = [];
   int _adminPeriodIdx = 0; // period index for admin's own report card
+  List<GroupMetric> _adminPersonalMetrics = [];
+  List<IbadatPeriod> _adminPeriods = [];
+  IbadatReport? _adminReport;
 
   // Non-admin (user): single group data
   List<IbadatProfile> _userMembers = [];
@@ -133,12 +133,27 @@ class HomeScreenState extends State<HomeScreen> {
     final myGroups =
         allGroups.where((g) => g.adminId == widget.profile.id).toList();
 
-    // Build sections in parallel
-    final sections = await Future.wait(myGroups.map(_loadSection));
+    // Load sections, personal metrics, and admin's personal periods in parallel.
+    // Admin periods are loaded at state level so the self-report card works
+    // even before any group is created.
+    final sectionsFuture = Future.wait(myGroups.map(_loadSection));
+    final personalMetricsFuture = _metricRepo.getForAdmin(widget.profile.id);
+    final adminPeriodsFuture =
+        _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
+
+    final sections = await sectionsFuture;
+    final personalMetrics = await personalMetricsFuture;
+    final adminPeriods =
+        (await adminPeriodsFuture).reversed.toList(); // oldest first
+
+    final adminReport = await _fetchAdminReport(adminPeriods);
 
     if (mounted) {
       setState(() {
         _sections = sections;
+        _adminPersonalMetrics = personalMetrics;
+        _adminPeriods = adminPeriods;
+        _adminReport = adminReport;
       });
     }
   }
@@ -150,7 +165,6 @@ class HomeScreenState extends State<HomeScreen> {
       _groupRepo.getGroupMembers(group.id),
       _metricRepo.getForGroup(group.id),
       _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
-      _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id),
     ]);
 
     section.members = (results[0] as List<IbadatProfile>)
@@ -159,10 +173,8 @@ class HomeScreenState extends State<HomeScreen> {
     section.metrics = results[1] as List<GroupMetric>;
     final periodsRaw = results[2] as List<IbadatPeriod>;
     section.periods = periodsRaw.reversed.toList(); // oldest first
-    section.adminPeriods = (results[3] as List<IbadatPeriod>).reversed.toList();
 
     await _loadSectionReports(section);
-    await _loadAdminReport(section);
     return section;
   }
 
@@ -212,22 +224,28 @@ class HomeScreenState extends State<HomeScreen> {
     // Admin's own report — loaded separately by _loadAdminReport
   }
 
-  Future<void> _loadAdminReport(_GroupSection section) async {
-    if (section.hasAdminPeriods) {
-      final period = section.adminPeriods[_adminPeriodIdx.clamp(0, section.adminPeriods.length - 1)];
-      section.adminReport = await _reportRepo.getReportByPeriod(
+  Future<IbadatReport?> _fetchAdminReport(List<IbadatPeriod> adminPeriods) {
+    if (adminPeriods.isNotEmpty) {
+      final period =
+          adminPeriods[_adminPeriodIdx.clamp(0, adminPeriods.length - 1)];
+      return _reportRepo.getReportByPeriod(
         userId: widget.profile.id,
         groupId: period.groupId,
         periodId: period.id,
       );
-    } else {
-      section.adminReport = await _reportRepo.getReport(
-        userId: widget.profile.id,
-        groupId: section.group.id,
-        month: DateTime.now().month,
-        year: DateTime.now().year,
-      );
     }
+    final now = DateTime.now();
+    return _reportRepo.getReport(
+      userId: widget.profile.id,
+      groupId: null,
+      month: now.month,
+      year: now.year,
+    );
+  }
+
+  Future<void> _reloadAdminReport() async {
+    final report = await _fetchAdminReport(_adminPeriods);
+    if (mounted) setState(() => _adminReport = report);
   }
 
   /// Loads only the user's own report for the currently selected period/month.
@@ -464,42 +482,55 @@ class HomeScreenState extends State<HomeScreen> {
     final totalMembers = _sections.fold(0, (sum, sec) => sum + sec.members.length);
 
     return [
-      // Combined admin card: profile info + period nav + own report
+      // Combined admin card: profile info + period nav + own report.
+      // Shown even when the admin has no groups yet — they still submit
+      // personal reports that need to be visible here.
       Builder(builder: (context) {
-        if (_sections.isEmpty) return const SizedBox.shrink();
-        final sec = _sections.firstWhere(
-          (sec) => sec.group.id == widget.profile.currentGroupId,
-          orElse: () => _sections.first,
-        );
-        final periods = sec.adminPeriods; // admin's personal periods
+        final sec = _sections.isEmpty
+            ? null
+            : _sections.firstWhere(
+                (sec) => sec.group.id == widget.profile.currentGroupId,
+                orElse: () => _sections.first,
+              );
+        final periods = _adminPeriods;
         final hasPeriods = periods.isNotEmpty;
         final pidx = _adminPeriodIdx.clamp(0, hasPeriods ? periods.length - 1 : 0);
-        final adminReport = sec.adminReport;
+        final adminReport = _adminReport;
+        final adminMetrics = _adminPersonalMetrics;
         final score = adminReport != null
-            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, sec.metrics)
+            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, adminMetrics)
             : 0.0;
-        final trend = _trendValues(
-          widget.profile.id,
-          sec.trendReports,
-          sec.viewMonth,
-          sec.viewYear,
-          sec.metrics,
-        );
+        final trend = sec != null
+            ? _trendValues(
+                widget.profile.id,
+                sec.trendReports,
+                sec.viewMonth,
+                sec.viewYear,
+                adminMetrics,
+              )
+            : const <int>[];
 
         return GestureDetector(
           onTap: () {
+            final now = DateTime.now();
             Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => DetailScreen(
                 profile: widget.profile,
-                groupId: sec.group.id,
+                groupId: sec?.group.id ?? '',
+                adminId: widget.profile.id,
                 report: adminReport,
-                weekLabel: WeekUtils.monthLabel(sec.viewMonth, sec.viewYear),
+                weekLabel: WeekUtils.monthLabel(
+                  sec?.viewMonth ?? now.month,
+                  sec?.viewYear ?? now.year,
+                ),
                 isWeekMode: false,
-                monthReports: sec.trendReports.values
-                    .map((m) => m[widget.profile.id])
-                    .whereType<IbadatReport>()
-                    .toList(),
-                periods: sec.adminPeriods,
+                monthReports: sec != null
+                    ? sec.trendReports.values
+                        .map((m) => m[widget.profile.id])
+                        .whereType<IbadatReport>()
+                        .toList()
+                    : const <IbadatReport>[],
+                periods: periods,
                 initialPeriodIdx: pidx,
               ),
             ));
@@ -577,8 +608,7 @@ class HomeScreenState extends State<HomeScreen> {
                       IconButton(
                         onPressed: pidx < periods.length - 1 ? () async {
                           setState(() => _adminPeriodIdx = pidx + 1);
-                          await _loadAdminReport(sec);
-                          if (mounted) setState(() {});
+                          await _reloadAdminReport();
                         } : null,
                         icon: Icon(Icons.chevron_left,
                             color: pidx < periods.length - 1
@@ -594,8 +624,7 @@ class HomeScreenState extends State<HomeScreen> {
                       IconButton(
                         onPressed: pidx > 0 ? () async {
                           setState(() => _adminPeriodIdx = pidx - 1);
-                          await _loadAdminReport(sec);
-                          if (mounted) setState(() {});
+                          await _reloadAdminReport();
                         } : null,
                         icon: Icon(Icons.chevron_right,
                             color: pidx > 0
@@ -612,7 +641,7 @@ class HomeScreenState extends State<HomeScreen> {
                   report: adminReport,
                   score: score,
                   trend: trend,
-                  metrics: sec.metrics,
+                  metrics: adminMetrics,
                 ),
               ],
             ),
@@ -1448,19 +1477,30 @@ class _AdminReportRow extends StatelessWidget {
       children: [
         Expanded(
           child: Wrap(
-            spacing: 4,
-            runSpacing: 4,
+            spacing: 6,
+            runSpacing: 6,
             children: metrics.map((metric) {
               final val = metric.id == null ? 0 : report!.valueForMetric(metric.id!);
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: metric.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  '${metric.icon}$val',
-                  style: TextStyle(color: metric.color, fontSize: 10, fontWeight: FontWeight.w600),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(metric.icon, style: const TextStyle(fontSize: 12)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$val',
+                      style: TextStyle(
+                        color: metric.color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               );
             }).toList(),

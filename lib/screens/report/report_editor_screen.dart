@@ -361,23 +361,23 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.inbox_outlined, color: Color(0xFF94A3B8), size: 34),
-          SizedBox(height: 10),
+          const Icon(Icons.inbox_outlined, color: Color(0xFF94A3B8), size: 34),
+          const SizedBox(height: 10),
           Text(
-            'Показатели ещё не настроены',
-            style: TextStyle(
+            S.of(context).customCatEmptyTitle,
+            style: const TextStyle(
               color: Color(0xFFE2E8F0),
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
             textAlign: TextAlign.center,
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 6),
           Text(
-            'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
-            style: TextStyle(
+            S.of(context).customCatEmptyHint,
+            style: const TextStyle(
               color: Color(0xFF94A3B8),
               fontSize: 13,
               height: 1.4,

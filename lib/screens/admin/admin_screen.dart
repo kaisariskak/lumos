@@ -92,6 +92,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   // Admin's own personal metrics (admin_id != null, group_id == null)
   List<GroupMetric> _adminMetrics = [];
+  bool _adminMetricsExpanded = false;
 
   bool get _isSuperAdmin => widget.profile.isSuperAdmin;
 
@@ -549,6 +550,7 @@ class _AdminScreenState extends State<AdminScreen> {
           }
           _members.removeWhere((m) => m.id == member.id);
         });
+        widget.onGroupChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text(S.of(context).removedFromGroup),
@@ -1579,6 +1581,8 @@ class _AdminScreenState extends State<AdminScreen> {
             _selectedGroup = _allGroups.isNotEmpty ? _allGroups.first : null;
           }
         });
+        // Перезагрузить вкладку «Список», чтобы удалённая группа исчезла оттуда тоже
+        widget.onGroupChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('"${group.name}" ${S.of(context).delete}'),
@@ -2026,7 +2030,7 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${member.displayName} → "${selected.name}" тобына ауыстырылды ✅'),
+          content: Text(S.of(context).memberMovedToGroup(member.displayName, selected.name)),
           backgroundColor: const Color(0xFF059669),
         ),
       );
@@ -2592,9 +2596,9 @@ class _AdminScreenState extends State<AdminScreen> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
             ),
-            child: const Text(
-              'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            child: Text(
+              S.of(context).customCatEmptyHint,
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
             ),
           )
         else
@@ -2902,35 +2906,49 @@ class _AdminScreenState extends State<AdminScreen> {
 
                 const Divider(color: Color(0xFF334155), height: 24),
 
-                Row(children: [
-                  const Text('📊', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(s.customCatsTitle,
-                        style: const TextStyle(
-                            color: Color(0xFFE2E8F0),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setSheet(
+                      () => _adminMetricsExpanded = !_adminMetricsExpanded),
+                  child: Row(children: [
+                    const Text('📊', style: TextStyle(fontSize: 16)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(s.customCatsTitle,
+                          style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
                     ),
-                    child: Text(
-                      '${_adminMetrics.length}',
-                      style: TextStyle(
-                        color: AccentProvider.instance.current.accentLight,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${_adminMetrics.length}',
+                        style: TextStyle(
+                          color: AccentProvider.instance.current.accentLight,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                ]),
-                const SizedBox(height: 10),
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: _adminMetricsExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(Icons.keyboard_arrow_down,
+                          color: Color(0xFF64748B), size: 20),
+                    ),
+                  ]),
+                ),
 
-                if (_adminMetrics.isEmpty)
+                if (_adminMetricsExpanded) ...[
+                  const SizedBox(height: 10),
+
+                  if (_adminMetrics.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Text(
@@ -3011,24 +3029,25 @@ class _AdminScreenState extends State<AdminScreen> {
                       },
                     ),
                   ),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await _showAddAdminMetricDialog();
-                      setSheet(() {});
-                    },
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(s.customCatAdd),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AccentProvider.instance.current.accentLight,
-                      side: BorderSide(color: accent.withValues(alpha: 0.35)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await _showAddAdminMetricDialog();
+                        setSheet(() {});
+                      },
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text(s.customCatAdd),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AccentProvider.instance.current.accentLight,
+                        side: BorderSide(color: accent.withValues(alpha: 0.35)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
-                ),
+                ],
 
                 const Divider(color: Color(0xFF334155), height: 24),
 
@@ -3286,6 +3305,37 @@ class _AdminScreenState extends State<AdminScreen> {
     return maxOrderIndex + 1;
   }
 
+  Future<void> _showAdminNoticeDialog({
+    required String title,
+    required String message,
+    Color accentColor = const Color(0xFFEF4444),
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          title,
+          style: const TextStyle(
+              color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          message,
+          style: const TextStyle(color: Color(0xFFCBD5E1)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK', style: TextStyle(color: accentColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _refreshAdminMetrics() async {
     try {
       final metrics = await _metricRepo.getForAdmin(widget.profile.id);
@@ -3293,8 +3343,10 @@ class _AdminScreenState extends State<AdminScreen> {
       setState(() => _adminMetrics = metrics);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      await _showAdminNoticeDialog(
+        title: S.of(context).error,
+        message: '$e',
+      );
     }
   }
 
@@ -3317,17 +3369,12 @@ class _AdminScreenState extends State<AdminScreen> {
         orderIndex: _nextAdminMetricOrderIndex(),
       );
       await _refreshAdminMetrics();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Параметр добавлен'),
-          backgroundColor: Color(0xFF059669),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      await _showAdminNoticeDialog(
+        title: S.of(context).error,
+        message: '$e',
+      );
     }
   }
 
@@ -3336,11 +3383,11 @@ class _AdminScreenState extends State<AdminScreen> {
     final hasRecordedValues = await _metricRepo.hasRecordedValues(metric.id!);
     if (!mounted) return;
     if (hasRecordedValues) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Нельзя удалить параметр, который уже использовался в отчётах'),
-          backgroundColor: Color(0xFFB45309),
-        ),
+      await _showAdminNoticeDialog(
+        title: 'Удаление недоступно',
+        message:
+            'Нельзя удалить параметр, который уже использовался в отчётах.',
+        accentColor: const Color(0xFFB45309),
       );
       return;
     }
@@ -3374,17 +3421,12 @@ class _AdminScreenState extends State<AdminScreen> {
     try {
       await _metricRepo.delete(metric.id!);
       await _refreshAdminMetrics();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Параметр удалён'),
-          backgroundColor: Color(0xFF374151),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      await _showAdminNoticeDialog(
+        title: S.of(context).error,
+        message: '$e',
+      );
     }
   }
 
@@ -3648,7 +3690,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
   final _maxCtrl = TextEditingController(text: '10');
   String _selectedIcon = '📖';
   String _selectedUnit = 'рет';
-  String? _errorText;
+  String? _errorRu;
+  String? _errorKk;
+  String? _errorMax;
 
   static const _icons = [
     '📖',
@@ -3685,24 +3729,28 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     final nameRu = _nameRuCtrl.text.trim();
     final nameKk = _nameKkCtrl.text.trim();
     final maxValue = int.tryParse(_maxCtrl.text.trim());
-    if (nameRu.isEmpty && nameKk.isEmpty) {
-      setState(() => _errorText = s.customCatNameLabel);
+    final requiredMsg = s.languageCode == 'kk' ? 'Міндетті өріс' : 'Обязательное поле';
+
+    final errRu = nameRu.isEmpty ? requiredMsg : null;
+    final errKk = nameKk.isEmpty ? requiredMsg : null;
+    final errMax = (maxValue == null || maxValue <= 0) ? s.customCatMaxLabel : null;
+
+    if (errRu != null || errKk != null || errMax != null) {
+      setState(() {
+        _errorRu = errRu;
+        _errorKk = errKk;
+        _errorMax = errMax;
+      });
       return;
     }
-    if (maxValue == null || maxValue <= 0) {
-      setState(() => _errorText = s.customCatMaxLabel);
-      return;
-    }
-    // If one language is empty, fallback to the other so both are populated.
-    final resolvedRu = nameRu.isNotEmpty ? nameRu : nameKk;
-    final resolvedKk = nameKk.isNotEmpty ? nameKk : nameRu;
+
     Navigator.of(context).pop(
       _GroupMetricDialogResult(
-        nameRu: resolvedRu,
-        nameKk: resolvedKk,
+        nameRu: nameRu,
+        nameKk: nameKk,
         icon: _selectedIcon,
         unit: _selectedUnit,
-        maxValue: maxValue,
+        maxValue: maxValue!,
       ),
     );
   }
@@ -3732,7 +3780,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               controller: _nameRuCtrl,
               style: const TextStyle(color: Color(0xFFE2E8F0)),
               onChanged: (_) {
-                if (_errorText != null) setState(() => _errorText = null);
+                if (_errorRu != null) setState(() => _errorRu = null);
               },
               decoration: InputDecoration(
                 hintText: s.customCatNameHint,
@@ -3749,6 +3797,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                   borderSide: BorderSide(color: accent),
                 ),
                 isDense: true,
+                errorText: _errorRu,
               ),
             ),
             const SizedBox(height: 10),
@@ -3761,7 +3810,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               controller: _nameKkCtrl,
               style: const TextStyle(color: Color(0xFFE2E8F0)),
               onChanged: (_) {
-                if (_errorText != null) setState(() => _errorText = null);
+                if (_errorKk != null) setState(() => _errorKk = null);
               },
               decoration: InputDecoration(
                 hintText: s.customCatNameHint,
@@ -3778,7 +3827,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                   borderSide: BorderSide(color: accent),
                 ),
                 isDense: true,
-                errorText: _errorText,
+                errorText: _errorKk,
               ),
             ),
             const SizedBox(height: 14),
@@ -3842,6 +3891,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               controller: _maxCtrl,
               keyboardType: TextInputType.number,
               style: const TextStyle(color: Color(0xFFE2E8F0)),
+              onChanged: (_) {
+                if (_errorMax != null) setState(() => _errorMax = null);
+              },
               decoration: InputDecoration(
                 hintText: '10',
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
@@ -3857,6 +3909,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                   borderSide: BorderSide(color: accent),
                 ),
                 isDense: true,
+                errorText: _errorMax,
               ),
             ),
           ],

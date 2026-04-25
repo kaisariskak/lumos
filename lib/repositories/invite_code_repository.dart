@@ -81,11 +81,22 @@ class InviteCodeRepository {
   }
 
   /// Marks a code as used after successful activation.
+  ///
+  /// Throws if the UPDATE did not affect any row — otherwise RLS or a stale
+  /// id would leave the code stuck in `is_used=false` and nothing would
+  /// surface the failure (see bug with ADM-DQDAF7, 2026-04-25).
   Future<void> markUsed(int id) async {
-    await _client
+    final data = await _client
         .from('ibadat_invite_codes')
         .update({'is_used': true})
-        .eq('id', id);
+        .eq('id', id)
+        .select();
+    if ((data as List).isEmpty) {
+      throw StateError(
+        'markUsed: no row updated for invite code id=$id '
+        '(RLS rejected UPDATE or the code was deleted).',
+      );
+    }
   }
 
   /// Returns the latest active (not used, not expired) USER code for a group,

@@ -113,7 +113,8 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       profileId: widget.member.id,
       amount: amount,
       paymentDate: _paymentDate,
-      paidMonth: _computePaidMonth(amount),
+      // Доп. платёж всегда считается оплаченным
+      paidMonth: _paidExtra ? true : _computePaidMonth(amount),
       paidExtra: _paidExtra,
       createdBy: widget.createdBy,
     );
@@ -292,7 +293,8 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
               const SizedBox(height: 8),
             ],
 
-            // Manual paid status toggle (always visible)
+            // Manual paid status toggle — hidden for Доп. (всегда оплачен)
+            if (!_paidExtra)
             GestureDetector(
               onTap: () => setState(() => _paidMonth = !_paidMonth),
               child: Container(

@@ -212,6 +212,8 @@ class AppStrings {
   final String customCatNameHint;
   final String customCatUnitLabel;
   final String customCatMaxLabel;
+  final String customCatEmptyTitle;
+  final String customCatEmptyHint;
 
   // ── PIN ────────────────────────────────────────────────
   final String pinCode;
@@ -410,6 +412,8 @@ class AppStrings {
     required this.customCatNameHint,
     required this.customCatUnitLabel,
     required this.customCatMaxLabel,
+    required this.customCatEmptyTitle,
+    required this.customCatEmptyHint,
     required this.pinCode,
     required this.pinEnabled,
     required this.pinDisabled,
@@ -619,6 +623,8 @@ const _kk = AppStrings(
   customCatNameHint: 'Мысалы: Қосымша намаз',
   customCatUnitLabel: 'Өлшем бірлігі:',
   customCatMaxLabel: 'Апталық максимум:',
+  customCatEmptyTitle: 'Көрсеткіштер әлі қосылмаған',
+  customCatEmptyHint: 'Әкімші бұл топқа көрсеткіштерді қосқан кезде, олар есепте автоматты түрде көрінеді.',
   pinCode: 'PIN код',
   pinEnabled: 'Қосулы',
   pinDisabled: 'Өшірулі',
@@ -838,6 +844,8 @@ const _ru = AppStrings(
   customCatNameHint: 'Например: Доп. намаз',
   customCatUnitLabel: 'Единица измерения:',
   customCatMaxLabel: 'Недельный максимум:',
+  customCatEmptyTitle: 'Показатели ещё не настроены',
+  customCatEmptyHint: 'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────
@@ -891,6 +899,13 @@ extension AppStringsX on AppStrings {
       }
     }
     return kkUnit;
+  }
+
+  String memberMovedToGroup(String memberName, String groupName) {
+    if (languageCode == 'ru') {
+      return '$memberName → переведён(а) в группу "$groupName" ✅';
+    }
+    return '$memberName → "$groupName" тобына ауыстырылды ✅';
   }
 }
 

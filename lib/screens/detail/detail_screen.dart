@@ -22,6 +22,10 @@ class DetailScreen extends StatefulWidget {
   final List<IbadatReport> monthReports;
   final List<IbadatPeriod> periods;
   final int initialPeriodIdx;
+  // Non-null → viewing admin's own personal reports: metrics come from
+  // getForAdmin(adminId), and period reports use the period's own groupId
+  // (nullable for personal periods).
+  final String? adminId;
 
   const DetailScreen({
     super.key,
@@ -33,6 +37,7 @@ class DetailScreen extends StatefulWidget {
     this.monthReports = const [],
     this.periods = const [],
     this.initialPeriodIdx = 0,
+    this.adminId,
   });
 
   @override
@@ -66,7 +71,9 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Future<void> _loadMetrics() async {
     try {
-      final metrics = await _metricRepo.getForGroup(widget.groupId);
+      final metrics = widget.adminId != null
+          ? await _metricRepo.getForAdmin(widget.adminId!)
+          : await _metricRepo.getForGroup(widget.groupId);
       if (mounted) {
         setState(() {
           _metrics = metrics;
@@ -88,7 +95,7 @@ class _DetailScreenState extends State<DetailScreen> {
     try {
       final r = await _repo.getReportByPeriod(
         userId: widget.profile.id,
-        groupId: widget.groupId,
+        groupId: widget.adminId != null ? period.groupId : widget.groupId,
         periodId: period.id,
       );
       setState(() {
@@ -300,18 +307,18 @@ class _DetailScreenState extends State<DetailScreen> {
                                 crossAxisCount: 2,
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                                childAspectRatio: 1.3,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 1.55,
                                 children: _visibleMetrics.map((metric) {
                                   final val = _getValue(metric.id!);
                                   final pct = metricProgress(val, metric.maxValue);
 
                                   return Container(
-                                    padding: const EdgeInsets.all(14),
+                                    padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
                                       color: Colors.white.withValues(alpha: 0.03),
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(14),
                                       border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
                                     ),
                                     child: Column(
@@ -320,26 +327,29 @@ class _DetailScreenState extends State<DetailScreen> {
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Text(metric.icon, style: const TextStyle(fontSize: 22)),
+                                            Text(metric.icon, style: const TextStyle(fontSize: 18)),
                                             CategoryRing(value: pct, color: metric.color),
                                           ],
                                         ),
                                         const Spacer(),
                                         Text(
                                           '$val',
-                                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: metric.color),
+                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: metric.color, height: 1.0),
                                         ),
+                                        const SizedBox(height: 2),
                                         Text(
                                           '${metric.localizedName(S.of(context).languageCode)} · ${S.of(context).unitLabel(metric.unit)}',
-                                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500),
+                                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.w500),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
                                         ),
-                                        const SizedBox(height: 8),
+                                        const SizedBox(height: 6),
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(2),
                                           child: Stack(
                                             children: [
                                               Container(
-                                                height: 4,
+                                                height: 3,
                                                 decoration: BoxDecoration(
                                                   color: Colors.white.withValues(alpha: 0.06),
                                                   borderRadius: BorderRadius.circular(2),
@@ -348,7 +358,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                               FractionallySizedBox(
                                                 widthFactor: pct,
                                                 child: Container(
-                                                  height: 4,
+                                                  height: 3,
                                                   decoration: BoxDecoration(
                                                     color: metric.color,
                                                     borderRadius: BorderRadius.circular(2),

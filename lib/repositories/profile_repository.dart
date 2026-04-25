@@ -63,10 +63,17 @@ class ProfileRepository {
   }
 
   Future<void> updateCurrentGroup(String userId, String? groupId) async {
-    await _client
+    final data = await _client
         .from('ibadat_profiles')
         .update({'current_group_id': groupId, 'updated_at': DateTime.now().toIso8601String()})
-        .eq('id', userId);
+        .eq('id', userId)
+        .select();
+    if ((data as List).isEmpty) {
+      throw StateError(
+        'updateCurrentGroup: no row updated for user $userId '
+        '(RLS rejected UPDATE or the profile was deleted).',
+      );
+    }
   }
 
   Future<void> updateRole(String userId, String role) async {
