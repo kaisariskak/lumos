@@ -70,6 +70,13 @@ class GroupMetricRepository {
     return GroupMetric.fromJson(Map<String, dynamic>.from(data));
   }
 
+  Future<void> updateMaxValue(String id, int newMaxValue) async {
+    await _client
+        .from('group_metrics')
+        .update({'max_value': newMaxValue})
+        .eq('id', id);
+  }
+
   Future<void> delete(String id) async {
     await _client.from('group_metrics').delete().eq('id', id);
   }

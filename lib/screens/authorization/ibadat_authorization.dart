@@ -18,21 +18,28 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      final googleSignIn = GoogleSignIn(
-        serverClientId: AppConfig.googleWebClientId,
-      );
-      await googleSignIn.signOut();
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-      final auth = await googleUser.authentication;
+      await GoogleSignIn.instance.signOut();
+      final googleUser = await GoogleSignIn.instance.authenticate();
+      final auth = googleUser.authentication;
       final idToken = auth.idToken;
       if (idToken == null) throw Exception('ID token жоқ');
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
+        nonce: AppConfig.googleSignInRawNonce,
+      );
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      if (!mounted) return;
+      final s = S.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${s.error}: ${e.description ?? e.code.name}'),
+          duration: const Duration(seconds: 5),
+        ),
       );
     } on AuthException catch (e) {
       if (!mounted) return;

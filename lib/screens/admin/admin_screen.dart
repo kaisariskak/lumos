@@ -3016,6 +3016,14 @@ class _AdminScreenState extends State<AdminScreen> {
                                 ),
                                 IconButton(
                                   onPressed: () async {
+                                    await _editAdminMetric(m);
+                                    setSheet(() {});
+                                  },
+                                  icon: const Icon(Icons.edit_outlined,
+                                      color: Color(0xFF6366F1), size: 20),
+                                ),
+                                IconButton(
+                                  onPressed: () async {
                                     await _deleteAdminMetric(m);
                                     setSheet(() {});
                                   },
@@ -3427,6 +3435,76 @@ class _AdminScreenState extends State<AdminScreen> {
         title: S.of(context).error,
         message: '$e',
       );
+    }
+  }
+
+  Future<void> _editAdminMetric(GroupMetric metric) async {
+    if (metric.id == null) return;
+    final ctrl = TextEditingController(text: '${metric.maxValue}');
+    final s = S.of(context);
+    final newValue = await showDialog<int>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Text(metric.icon, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                metric.localizedName(s.languageCode),
+                style: const TextStyle(
+                    color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+          decoration: InputDecoration(
+            labelText: 'Цель (${s.unitLabel(metric.unit)})',
+            labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF6366F1)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(s.cancel,
+                style: const TextStyle(color: Color(0xFF64748B))),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = int.tryParse(ctrl.text.trim());
+              if (v != null && v > 0) Navigator.pop(ctx, v);
+            },
+            child: Text(s.save,
+                style: const TextStyle(color: Color(0xFF6366F1))),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (newValue == null || !mounted) return;
+    try {
+      await _metricRepo.updateMaxValue(metric.id!, newValue);
+      await _refreshAdminMetrics();
+    } catch (e) {
+      if (!mounted) return;
+      await _showAdminNoticeDialog(title: s.error, message: '$e');
     }
   }
 
