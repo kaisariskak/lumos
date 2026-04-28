@@ -162,12 +162,13 @@ class _AuthGateState extends State<AuthGate> {
         }
       }
 
-      // Mark code as used (ADMIN codes are one-time; USER codes are 24h but also mark used).
-      // Isolated so a marking failure does not block login — the profile already exists.
-      try {
-        await codeRepo.markUsed(code.id);
-      } catch (e) {
-        debugPrint('markUsed failed for code ${code.code} (id=${code.id}): $e');
+      // Only mark ADMIN codes as used (one-time). USER codes stay active for 24 h.
+      if (code.roleType == 'ADMIN') {
+        try {
+          await codeRepo.markUsed(code.id);
+        } catch (e) {
+          debugPrint('markUsed failed for code ${code.code} (id=${code.id}): $e');
+        }
       }
 
       // Reload profile to enter the app

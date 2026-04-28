@@ -2654,6 +2654,12 @@ class _AdminScreenState extends State<AdminScreen> {
                       ),
                     ),
                     IconButton(
+                      onPressed: () => _editGroupMetric(metric),
+                      icon: const Icon(Icons.edit_outlined,
+                          color: Color(0xFF6366F1), size: 20),
+                      tooltip: 'Изменить',
+                    ),
+                    IconButton(
                       onPressed: () => _deleteGroupMetric(metric),
                       icon: const Icon(Icons.delete_outline,
                           color: Color(0xFFEF4444), size: 20),
@@ -2952,7 +2958,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Text(
-                      'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
+                      s.adminPersonalMetricsHint,
                       style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                     ),
                   )
@@ -3252,35 +3258,37 @@ class _AdminScreenState extends State<AdminScreen> {
     final hasRecordedValues = await _metricRepo.hasRecordedValues(metric.id!);
     if (!mounted || _adminSelectedGroup?.id != metric.groupId) return;
     if (hasRecordedValues) {
+      final s = S.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Нельзя удалить параметр, который уже использовался в отчётах'),
-          backgroundColor: Color(0xFFB45309),
+        SnackBar(
+          content: Text(s.metricCannotDeleteMsg),
+          backgroundColor: const Color(0xFFB45309),
         ),
       );
       return;
     }
+    final s = S.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Удалить параметр?',
-          style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+        title: Text(
+          s.metricDeleteTitle,
+          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'Удалить "${metric.localizedName(S.of(context).languageCode)}"? Параметр исчезнет из группы без возможности восстановления.',
+          s.metricDeleteConfirm(metric.localizedName(s.languageCode), fromGroup: true),
           style: const TextStyle(color: Color(0xFFCBD5E1)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Color(0xFF64748B))),
+            child: Text(s.cancel, style: const TextStyle(color: Color(0xFF64748B))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить', style: TextStyle(color: Color(0xFFEF4444))),
+            child: Text(s.delete, style: const TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
@@ -3302,6 +3310,77 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+    }
+  }
+
+  Future<void> _editGroupMetric(GroupMetric metric) async {
+    if (metric.id == null) return;
+    final s = S.of(context);
+    final ctrl = TextEditingController(text: '${metric.maxValue}');
+    final newValue = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Text(metric.icon, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                metric.localizedName(s.languageCode),
+                style: const TextStyle(
+                    color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+          decoration: InputDecoration(
+            labelText: 'Цель (${s.unitLabel(metric.unit)})',
+            labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide:
+                  BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Color(0xFF6366F1)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(s.cancel,
+                style: const TextStyle(color: Color(0xFF64748B))),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = int.tryParse(ctrl.text.trim());
+              if (v != null && v > 0) Navigator.pop(ctx, v);
+            },
+            child: Text(s.save,
+                style: const TextStyle(color: Color(0xFF6366F1))),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (newValue == null || !mounted) return;
+    if (_adminSelectedGroup?.id != metric.groupId) return;
+    try {
+      await _metricRepo.updateMaxValue(metric.id!, newValue);
+      await _refreshGroupMetrics(groupId: metric.groupId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${s.error}: $e')));
     }
   }
 
@@ -3391,45 +3470,48 @@ class _AdminScreenState extends State<AdminScreen> {
     final hasRecordedValues = await _metricRepo.hasRecordedValues(metric.id!);
     if (!mounted) return;
     if (hasRecordedValues) {
+      final s = S.of(context);
       await _showAdminNoticeDialog(
-        title: 'Удаление недоступно',
-        message:
-            'Нельзя удалить параметр, который уже использовался в отчётах.',
+        title: s.metricCannotDeleteTitle,
+        message: s.metricCannotDeleteMsg,
         accentColor: const Color(0xFFB45309),
       );
       return;
     }
+    final s = S.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       useRootNavigator: true,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Удалить параметр?',
-          style: TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+        title: Text(
+          s.metricDeleteTitle,
+          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'Удалить "${metric.localizedName(S.of(context).languageCode)}"? Параметр исчезнет без возможности восстановления.',
+          s.metricDeleteConfirm(metric.localizedName(s.languageCode)),
           style: const TextStyle(color: Color(0xFFCBD5E1)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена', style: TextStyle(color: Color(0xFF64748B))),
+            child: Text(s.cancel, style: const TextStyle(color: Color(0xFF64748B))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить', style: TextStyle(color: Color(0xFFEF4444))),
+            child: Text(s.delete, style: const TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
+    final backup = List<GroupMetric>.from(_adminMetrics);
+    setState(() => _adminMetrics = _adminMetrics.where((m) => m.id != metric.id).toList());
     try {
       await _metricRepo.delete(metric.id!);
-      await _refreshAdminMetrics();
     } catch (e) {
+      if (mounted) setState(() => _adminMetrics = backup);
       if (!mounted) return;
       await _showAdminNoticeDialog(
         title: S.of(context).error,

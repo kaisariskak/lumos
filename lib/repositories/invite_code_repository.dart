@@ -75,7 +75,9 @@ class InviteCodeRepository {
 
     final invite = InviteCode.fromJson(data);
     if (invite.isExpired) throw InviteCodeExpiredException();
-    if (invite.isUsed) throw InviteCodeUsedException();
+    // USER codes are valid for 24 h and can be used by multiple people.
+    // Only ADMIN codes are one-time.
+    if (invite.isUsed && invite.roleType == 'ADMIN') throw InviteCodeUsedException();
 
     return invite;
   }

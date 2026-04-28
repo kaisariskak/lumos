@@ -184,7 +184,9 @@ class _MainScaffoldState extends State<MainScaffold>
               groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
                 setState(() => _tabIndex = i);
-                if (i == 1) {
+                if (i == 0) {
+                  _homeKey.currentState?.reload();
+                } else if (i == 1) {
                   _reportKey.currentState?.reloadPeriods();
                 }
               },

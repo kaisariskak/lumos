@@ -61,7 +61,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class HomeScreenState extends State<HomeScreen> {
-  void reload() => _loadData();
+  // Silent reload — no spinner, used when switching tabs so UX stays smooth.
+  void reload() => _silentReload();
+
+  Future<void> _silentReload() async {
+    final version = ++_loadVersion;
+    try {
+      if (_isAdmin && !_isSuperAdmin) {
+        await _loadAdminData(version);
+      } else {
+        await _loadUserData(version);
+      }
+    } catch (_) {}
+  }
 
   late final IbadatGroupRepository _groupRepo;
   late final IbadatReportRepository _reportRepo;
@@ -76,6 +88,7 @@ class HomeScreenState extends State<HomeScreen> {
   List<GroupMetric> _adminPersonalMetrics = [];
   List<IbadatPeriod> _adminPeriods = [];
   IbadatReport? _adminReport;
+  int _loadVersion = 0; // guard against stale concurrent reloads
 
   // Non-admin (user): single group data
   List<IbadatProfile> _userMembers = [];
@@ -114,21 +127,25 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
+    final version = ++_loadVersion;
     setState(() => _isLoading = true);
     try {
       if (_isAdmin && !_isSuperAdmin) {
-        await _loadAdminData();
+        await _loadAdminData(version);
       } else {
-        await _loadUserData();
+        await _loadUserData(version);
       }
     } catch (_) {
       // ignore
+    } finally {
+      // Always clear the spinner so it never gets stuck when a silentReload
+      // incremented _loadVersion while this initial load was still running.
+      if (mounted) setState(() => _isLoading = false);
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   // ── Admin: load all groups this admin owns ──────────────────────────────────
-  Future<void> _loadAdminData() async {
+  Future<void> _loadAdminData(int version) async {
     final allGroups = await _groupRepo.getAllGroups();
     final myGroups =
         allGroups.where((g) => g.adminId == widget.profile.id).toList();
@@ -148,7 +165,7 @@ class HomeScreenState extends State<HomeScreen> {
 
     final adminReport = await _fetchAdminReport(adminPeriods);
 
-    if (mounted) {
+    if (mounted && _loadVersion == version) {
       setState(() {
         _sections = sections;
         _adminPersonalMetrics = personalMetrics;
@@ -224,7 +241,7 @@ class HomeScreenState extends State<HomeScreen> {
     // Admin's own report — loaded separately by _loadAdminReport
   }
 
-  Future<IbadatReport?> _fetchAdminReport(List<IbadatPeriod> adminPeriods) {
+  Future<IbadatReport?> _fetchAdminReport(List<IbadatPeriod> adminPeriods) async {
     if (adminPeriods.isNotEmpty) {
       final period =
           adminPeriods[_adminPeriodIdx.clamp(0, adminPeriods.length - 1)];
@@ -274,7 +291,8 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   // ── User: single group ──────────────────────────────────────────────────────
-  Future<void> _loadUserData() async {
+  Future<void> _loadUserData([int? version]) async {
+    version ??= ++_loadVersion;
     final results = await Future.wait([
       _groupRepo.getGroupMembers(widget.group!.id),
       _metricRepo.getForGroup(widget.group!.id),
@@ -335,7 +353,7 @@ class HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    if (mounted) {
+    if (mounted && _loadVersion == version) {
       setState(() {
         _userMembers = members;
         _userMetrics = metrics;

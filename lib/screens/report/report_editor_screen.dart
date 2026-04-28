@@ -239,10 +239,32 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
               orElse: () => periods.isNotEmpty ? periods.first : _selectedPeriod!,
             )
           : periods.isNotEmpty ? periods.first : null;
+
+      // Also reload the report for the (possibly new) selected period so
+      // that _report.periodId matches _selectedPeriod.id before any save.
+      IbadatReport? refreshedReport;
+      if (newSelected != null) {
+        refreshedReport = await _repo.getReportByPeriod(
+          userId: widget.profile.id,
+          groupId: newSelected.groupId,
+          periodId: newSelected.id,
+        );
+      }
+      if (!mounted) return;
+
       setState(() {
         _periods = periods;
         _selectedPeriod = newSelected;
         _groupMetrics = metrics;
+        if (newSelected != null) {
+          _report = refreshedReport ?? IbadatReport(
+            userId: widget.profile.id,
+            groupId: newSelected.groupId,
+            periodId: newSelected.id,
+            month: newSelected.startDate.month,
+            year: newSelected.startDate.year,
+          );
+        }
       });
     } catch (_) {
       // Keep the current editor state if background refresh fails.

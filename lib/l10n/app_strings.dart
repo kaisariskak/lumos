@@ -214,6 +214,10 @@ class AppStrings {
   final String customCatMaxLabel;
   final String customCatEmptyTitle;
   final String customCatEmptyHint;
+  final String metricCannotDeleteTitle;
+  final String metricCannotDeleteMsg;
+  final String metricDeleteTitle;
+  final String adminPersonalMetricsHint;
 
   // ── PIN ────────────────────────────────────────────────
   final String pinCode;
@@ -414,6 +418,10 @@ class AppStrings {
     required this.customCatMaxLabel,
     required this.customCatEmptyTitle,
     required this.customCatEmptyHint,
+    required this.metricCannotDeleteTitle,
+    required this.metricCannotDeleteMsg,
+    required this.metricDeleteTitle,
+    required this.adminPersonalMetricsHint,
     required this.pinCode,
     required this.pinEnabled,
     required this.pinDisabled,
@@ -625,6 +633,10 @@ const _kk = AppStrings(
   customCatMaxLabel: 'Апталық максимум:',
   customCatEmptyTitle: 'Көрсеткіштер әлі қосылмаған',
   customCatEmptyHint: 'Әкімші бұл топқа көрсеткіштерді қосқан кезде, олар есепте автоматты түрде көрінеді.',
+  metricCannotDeleteTitle: 'Жою мүмкін емес',
+  metricCannotDeleteMsg: 'Есептерде қолданылған көрсеткішті жоюға болмайды.',
+  metricDeleteTitle: 'Көрсеткішті жою?',
+  adminPersonalMetricsHint: 'Жеке көрсеткіштерді қосыңыз — олар тек «Менің кезеңдерім» есебінде көрінеді.',
   pinCode: 'PIN код',
   pinEnabled: 'Қосулы',
   pinDisabled: 'Өшірулі',
@@ -846,6 +858,10 @@ const _ru = AppStrings(
   customCatMaxLabel: 'Недельный максимум:',
   customCatEmptyTitle: 'Показатели ещё не настроены',
   customCatEmptyHint: 'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
+  metricCannotDeleteTitle: 'Удаление недоступно',
+  metricCannotDeleteMsg: 'Нельзя удалить параметр, который уже использовался в отчётах.',
+  metricDeleteTitle: 'Удалить параметр?',
+  adminPersonalMetricsHint: 'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────
@@ -899,6 +915,19 @@ extension AppStringsX on AppStrings {
       }
     }
     return kkUnit;
+  }
+
+  String metricDeleteConfirm(String name, {bool fromGroup = false}) {
+    if (languageCode == 'ru') {
+      final suffix = fromGroup
+          ? 'Параметр исчезнет из группы без возможности восстановления.'
+          : 'Параметр исчезнет без возможности восстановления.';
+      return 'Удалить "$name"? $suffix';
+    }
+    final suffix = fromGroup
+        ? 'Көрсеткіш топтан қалпына келтірілмей жойылады.'
+        : 'Көрсеткіш қалпына келтірілмей жойылады.';
+    return '"$name" жою? $suffix';
   }
 
   String memberMovedToGroup(String memberName, String groupName) {
