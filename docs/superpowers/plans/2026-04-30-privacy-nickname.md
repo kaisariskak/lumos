@@ -862,6 +862,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             _codeError = s.errorInviteInvalid;
             break;
           case 'expired_code':
+          case 'code_already_used':
             _codeError = s.errorInviteExpired;
             break;
           case 'already_registered':
