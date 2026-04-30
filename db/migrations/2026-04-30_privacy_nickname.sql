@@ -15,7 +15,7 @@ ALTER TABLE ibadat_profiles
 
 ALTER TABLE ibadat_profiles
   ADD CONSTRAINT nickname_format CHECK (
-    nickname ~ '^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі0-9 _.\-]+$'
+    nickname ~ '^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі0-9 _.-]+$'
   );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ibadat_profiles_nickname_uniq
@@ -58,6 +58,15 @@ CREATE POLICY profiles_admin_reads_members ON ibadat_profiles
     current_group_id IN (
       SELECT id FROM ibadat_groups WHERE admin_id = auth.uid()
     )
+  );
+
+-- Admin reads ungrouped users they created (needed for getUngroupedUsersByAdminIds).
+DROP POLICY IF EXISTS profiles_admin_reads_ungrouped ON ibadat_profiles;
+CREATE POLICY profiles_admin_reads_ungrouped ON ibadat_profiles
+  FOR SELECT TO authenticated
+  USING (
+    current_group_id IS NULL
+    AND created_by_admin_id = auth.uid()
   );
 
 -- Super-admin reads admins it created.
@@ -125,18 +134,21 @@ BEGIN
     RETURN jsonb_build_object('error', 'not_authenticated');
   END IF;
 
+  p_nickname := trim(p_nickname);
+
   IF length(p_nickname) < 2 OR length(p_nickname) > 32 THEN
     RETURN jsonb_build_object('error', 'invalid_nickname');
   END IF;
 
-  IF p_nickname !~ '^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі0-9 _.\-]+$' THEN
+  IF p_nickname !~ '^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі0-9 _.-]+$' THEN
     RETURN jsonb_build_object('error', 'invalid_nickname');
   END IF;
 
   -- Find code: USER codes can be reused while not expired; ADMIN codes are one-time.
   SELECT * INTO v_code FROM ibadat_invite_codes
    WHERE code = upper(trim(p_code))
-   LIMIT 1;
+   LIMIT 1
+   FOR UPDATE;
 
   IF v_code IS NULL THEN
     RETURN jsonb_build_object('error', 'invalid_code');
@@ -147,7 +159,7 @@ BEGIN
   END IF;
 
   IF v_code.role_type = 'ADMIN' AND v_code.is_used = true THEN
-    RETURN jsonb_build_object('error', 'expired_code');
+    RETURN jsonb_build_object('error', 'code_already_used');
   END IF;
 
   -- Idempotent: if profile already exists return success without insert.
