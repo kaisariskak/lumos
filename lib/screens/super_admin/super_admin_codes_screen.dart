@@ -107,7 +107,7 @@ class _SuperAdminCodesScreenState extends State<SuperAdminCodesScreen> {
                           const Text('🌟', style: TextStyle(fontSize: 12)),
                           const SizedBox(width: 6),
                           Text(
-                            '${widget.profile.displayName} · ${s.superAdminLabel}',
+                            '${widget.profile.nickname} · ${s.superAdminLabel}',
                             style: const TextStyle(
                               color: Color(0xFFFCD34D),
                               fontSize: 12,

@@ -234,14 +234,14 @@ class _DetailScreenState extends State<DetailScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  widget.profile.displayName[0].toUpperCase(),
+                                  widget.profile.nickname[0].toUpperCase(),
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 28),
                                 ),
                               ),
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              widget.profile.displayName,
+                              widget.profile.nickname,
                               style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 22, fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),

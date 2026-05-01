@@ -1,8 +1,6 @@
 class IbadatProfile {
   final String id;
-  final String displayName;
-  final String email;
-  final String? avatarUrl;
+  final String nickname;
   final String role;
   final String? currentGroupId;
   /// For admin users: the super-admin who created them
@@ -14,9 +12,7 @@ class IbadatProfile {
 
   const IbadatProfile({
     required this.id,
-    required this.displayName,
-    required this.email,
-    this.avatarUrl,
+    required this.nickname,
     required this.role,
     this.currentGroupId,
     this.superAdminId,
@@ -31,9 +27,7 @@ class IbadatProfile {
   factory IbadatProfile.fromJson(Map<String, dynamic> json) {
     return IbadatProfile(
       id: json['id'] as String,
-      displayName: json['display_name'] as String,
-      email: json['email'] as String,
-      avatarUrl: json['avatar_url'] as String?,
+      nickname: json['nickname'] as String,
       role: json['role'] as String? ?? 'user',
       currentGroupId: json['current_group_id'] as String?,
       superAdminId: json['super_admin_id'] as String?,
@@ -46,18 +40,14 @@ class IbadatProfile {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'display_name': displayName,
-      'email': email,
-      'avatar_url': avatarUrl,
+      'nickname': nickname,
       'role': role,
       'current_group_id': currentGroupId,
     };
   }
 
   IbadatProfile copyWith({
-    String? displayName,
-    String? email,
-    String? avatarUrl,
+    String? nickname,
     String? role,
     String? currentGroupId,
     String? superAdminId,
@@ -65,9 +55,7 @@ class IbadatProfile {
   }) {
     return IbadatProfile(
       id: id,
-      displayName: displayName ?? this.displayName,
-      email: email ?? this.email,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
+      nickname: nickname ?? this.nickname,
       role: role ?? this.role,
       currentGroupId: currentGroupId ?? this.currentGroupId,
       superAdminId: superAdminId ?? this.superAdminId,

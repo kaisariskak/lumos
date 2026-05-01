@@ -16,44 +16,6 @@ class ProfileRepository {
     return IbadatProfile.fromJson(data);
   }
 
-  Future<IbadatProfile?> getUserByEmail(String email) async {
-    final data = await _client
-        .from('ibadat_profiles')
-        .select()
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle();
-    if (data == null) return null;
-    return IbadatProfile.fromJson(data);
-  }
-
-  Future<IbadatProfile> createProfile({
-    required String id,
-    required String displayName,
-    required String email,
-    String? avatarUrl,
-    String? createdByAdminId,
-    String? superAdminId,
-    String role = 'user',
-  }) async {
-    final now = DateTime.now().toIso8601String();
-    final data = await _client
-        .from('ibadat_profiles')
-        .insert({
-          'id': id,
-          'display_name': displayName,
-          'email': email,
-          'avatar_url': avatarUrl,
-          'role': role,
-          'created_by_admin_id': createdByAdminId,
-          'super_admin_id': superAdminId,
-          'created_at': now,
-          'updated_at': now,
-        })
-        .select()
-        .single();
-    return IbadatProfile.fromJson(data);
-  }
-
   Future<List<IbadatProfile>> getProfilesByGroup(String groupId) async {
     final data = await _client
         .from('ibadat_profiles')
@@ -83,12 +45,11 @@ class ProfileRepository {
         .eq('id', userId);
   }
 
-  /// Set the super_admin_id on an admin user (called when super-admin creates an admin)
-  Future<void> setSuperAdminId(String adminId, String superAdminId) async {
+  Future<void> updateNickname(String userId, String nickname) async {
     await _client
         .from('ibadat_profiles')
-        .update({'super_admin_id': superAdminId, 'updated_at': DateTime.now().toIso8601String()})
-        .eq('id', adminId);
+        .update({'nickname': nickname, 'updated_at': DateTime.now().toIso8601String()})
+        .eq('id', userId);
   }
 
   /// Physically delete a profile (only when member has no payments)
@@ -126,4 +87,43 @@ class ProfileRepository {
     return (data as List).map((e) => IbadatProfile.fromJson(e)).toList();
   }
 
+  /// Atomic registration: validate nickname + invite code on the server
+  /// in a single transaction. Returns the created profile on success or
+  /// throws [RegistrationException] with a typed reason on failure.
+  Future<IbadatProfile> registerWithInvite({
+    required String nickname,
+    required String code,
+  }) async {
+    final result = await _client.rpc('register_with_invite', params: {
+      'p_nickname': nickname,
+      'p_code': code,
+    });
+    final map = (result as Map).cast<String, dynamic>();
+    if (map['ok'] == true) {
+      final profileJson = (map['profile'] as Map).cast<String, dynamic>();
+      return IbadatProfile.fromJson(profileJson);
+    }
+    throw RegistrationException(map['error']?.toString() ?? 'unknown');
+  }
+
+  /// UX helper — true when [nickname] already taken. Used for live validation
+  /// on the registration screen.
+  Future<bool> isNicknameTaken(String nickname) async {
+    final result = await _client.rpc('is_nickname_taken', params: {
+      'p_nickname': nickname,
+    });
+    return result as bool;
+  }
+}
+
+/// Reason returned by [register_with_invite] RPC. One of:
+/// `not_authenticated`, `invalid_nickname`, `nickname_taken`,
+/// `invalid_code`, `expired_code`, `code_already_used`,
+/// `already_registered`, `unknown`.
+class RegistrationException implements Exception {
+  final String reason;
+  const RegistrationException(this.reason);
+
+  @override
+  String toString() => 'RegistrationException($reason)';
 }

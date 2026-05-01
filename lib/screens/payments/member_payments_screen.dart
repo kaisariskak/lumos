@@ -298,7 +298,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        widget.member.displayName,
+                        widget.member.nickname,
                         style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w700,

@@ -369,7 +369,7 @@ class _AdminScreenState extends State<AdminScreen> {
           _isAdding = false;
         });
       } else if (user.role == 'admin' && user.superAdminId == widget.profile.id) {
-        setState(() { _addError = '${user.displayName} бұл супер-adminдің admin тізімінде бар'; _isAdding = false; });
+        setState(() { _addError = '${user.nickname} бұл супер-adminдің admin тізімінде бар'; _isAdding = false; });
       } else {
         // Existing user — promote to admin and link to this super-admin
         await _profileRepo.updateRole(user.id, 'admin');
@@ -378,7 +378,7 @@ class _AdminScreenState extends State<AdminScreen> {
         await _loadData();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${user.displayName} admin болды 👑'),
+          content: Text('${user.nickname} admin болды 👑'),
           backgroundColor: const Color(0xFF059669),
         ));
       }
@@ -401,7 +401,7 @@ class _AdminScreenState extends State<AdminScreen> {
         ];
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${user.displayName} топқа қосылды ✅'),
+        content: Text('${user.nickname} топқа қосылды ✅'),
         backgroundColor: const Color(0xFF059669),
       ));
     } catch (e) {
@@ -425,8 +425,8 @@ class _AdminScreenState extends State<AdminScreen> {
             const SizedBox(height: 12),
             Text(
               isAdmin
-                  ? '${member.displayName} ${s.removeAdmin}?'
-                  : '${member.displayName} "${group.name}" - ${s.makeAdmin}?',
+                  ? '${member.nickname} ${s.removeAdmin}?'
+                  : '${member.nickname} "${group.name}" - ${s.makeAdmin}?',
               style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontWeight: FontWeight.w700,
@@ -491,8 +491,8 @@ class _AdminScreenState extends State<AdminScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(isAdmin
-                ? '${member.displayName} ${S.of(context).adminRemoved}'
-                : '${member.displayName} ${S.of(context).adminAssigned}'),
+                ? '${member.nickname} ${S.of(context).adminRemoved}'
+                : '${member.nickname} ${S.of(context).adminAssigned}'),
             backgroundColor: const Color(0xFF374151),
           ),
         );
@@ -517,7 +517,7 @@ class _AdminScreenState extends State<AdminScreen> {
             const Text('⚠️', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 12),
             Text(
-              '${member.displayName} ${s.removeMemberConfirm}',
+              '${member.nickname} ${s.removeMemberConfirm}',
               style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontWeight: FontWeight.w700,
@@ -1083,8 +1083,8 @@ class _AdminScreenState extends State<AdminScreen> {
                 const SizedBox(width: 6),
                 Text(
                   _isSuperAdmin
-                      ? '${widget.profile.displayName} · ${S.of(context).superAdminLabel}'
-                      : '${widget.profile.displayName} · ${S.of(context).groupAdminLabel}',
+                      ? '${widget.profile.nickname} · ${S.of(context).superAdminLabel}'
+                      : '${widget.profile.nickname} · ${S.of(context).groupAdminLabel}',
                   style: const TextStyle(
                     color: Color(0xFFFCD34D),
                     fontSize: 12,
@@ -1200,7 +1200,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         ),
                         child: Center(
                           child: Text(
-                            admin.displayName[0].toUpperCase(),
+                            admin.nickname[0].toUpperCase(),
                             style: const TextStyle(
                                 color: Color(0xFFFCD34D),
                                 fontWeight: FontWeight.w700),
@@ -1212,7 +1212,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(admin.displayName,
+                            Text(admin.nickname,
                                 style: const TextStyle(
                                     color: Color(0xFFE2E8F0),
                                     fontWeight: FontWeight.w600,
@@ -1345,7 +1345,7 @@ class _AdminScreenState extends State<AdminScreen> {
                           ),
                           child: Center(
                             child: Text(
-                              user.displayName[0].toUpperCase(),
+                              user.nickname[0].toUpperCase(),
                               style: const TextStyle(
                                   color: Color(0xFFFCA5A5),
                                   fontWeight: FontWeight.w700),
@@ -1357,7 +1357,7 @@ class _AdminScreenState extends State<AdminScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(user.displayName,
+                              Text(user.nickname,
                                   style: const TextStyle(
                                       color: Color(0xFFE2E8F0),
                                       fontWeight: FontWeight.w600,
@@ -1829,7 +1829,7 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
             child: Center(
               child: Text(
-                m.displayName[0].toUpperCase(),
+                m.nickname[0].toUpperCase(),
                 style: TextStyle(
                   color: tileColor,
                   fontWeight: FontWeight.w700,
@@ -1846,7 +1846,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(m.displayName,
+                      child: Text(m.nickname,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                               color: Color(0xFFE2E8F0),
@@ -2030,7 +2030,7 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(S.of(context).memberMovedToGroup(member.displayName, selected.name)),
+          content: Text(S.of(context).memberMovedToGroup(member.nickname, selected.name)),
           backgroundColor: const Color(0xFF059669),
         ),
       );
@@ -2055,8 +2055,8 @@ class _AdminScreenState extends State<AdminScreen> {
             const SizedBox(height: 12),
             Text(
               isFinancier
-                  ? '${member.displayName} ${s.removeFinancier}?'
-                  : '${member.displayName} "${group.name}" - ${s.makeFinancier}?',
+                  ? '${member.nickname} ${s.removeFinancier}?'
+                  : '${member.nickname} "${group.name}" - ${s.makeFinancier}?',
               style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontWeight: FontWeight.w700,
@@ -2104,8 +2104,8 @@ class _AdminScreenState extends State<AdminScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(isFinancier
-                ? '${member.displayName} ${S.of(context).financierRemoved}'
-                : '${member.displayName} ${S.of(context).financierAssigned}'),
+                ? '${member.nickname} ${S.of(context).financierRemoved}'
+                : '${member.nickname} ${S.of(context).financierAssigned}'),
             backgroundColor: const Color(0xFF374151),
           ),
         );

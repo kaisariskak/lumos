@@ -457,7 +457,7 @@ class HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(
                       color: Color(0xFF64748B), fontSize: 13)),
               Text(
-                '${widget.profile.displayName.split(' ').first} 👋',
+                '${widget.profile.nickname.split(' ').first} 👋',
                 style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontSize: 18,
@@ -480,7 +480,7 @@ class HomeScreenState extends State<HomeScreen> {
             ),
             child: Center(
               child: Text(
-                widget.profile.displayName[0].toUpperCase(),
+                widget.profile.nickname[0].toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -583,7 +583,7 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          widget.profile.displayName[0].toUpperCase(),
+                          widget.profile.nickname[0].toUpperCase(),
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
                         ),
                       ),
@@ -593,7 +593,7 @@ class HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(widget.profile.displayName,
+                          Text(widget.profile.nickname,
                               style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 16)),
                           const SizedBox(height: 2),
                           Text('👑 ${s.groupAdminLabel}',
@@ -1197,7 +1197,7 @@ class _MemberTile extends StatelessWidget {
               children: [
                 Center(
                   child: Text(
-                    member.displayName[0].toUpperCase(),
+                    member.nickname[0].toUpperCase(),
                     style: TextStyle(
                       color: catColor,
                       fontWeight: FontWeight.w800,
@@ -1233,7 +1233,7 @@ class _MemberTile extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      member.displayName.split(' ').first,
+                      member.nickname.split(' ').first,
                       style: const TextStyle(
                         color: Color(0xFFE2E8F0),
                         fontWeight: FontWeight.w700,

@@ -308,8 +308,8 @@ class _MemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = member.displayName.isNotEmpty
-        ? member.displayName[0].toUpperCase()
+    final initials = member.nickname.isNotEmpty
+        ? member.nickname[0].toUpperCase()
         : '?';
     final accent = AccentProvider.instance.current;
 
@@ -360,7 +360,7 @@ class _MemberCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  member.displayName,
+                  member.nickname,
                   style: const TextStyle(
                     color: Color(0xFFE2E8F0),
                     fontWeight: FontWeight.w600,

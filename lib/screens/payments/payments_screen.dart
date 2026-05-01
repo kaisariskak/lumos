@@ -127,7 +127,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             const Text('🗑️', style: TextStyle(fontSize: 40)),
             const SizedBox(height: 12),
             Text(
-              '${member.displayName} жойылсын ба?',
+              '${member.nickname} жойылсын ба?',
               style: const TextStyle(
                   color: Color(0xFFE2E8F0),
                   fontWeight: FontWeight.w700,
@@ -194,7 +194,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       const Text('💼', style: TextStyle(fontSize: 13)),
                       const SizedBox(width: 6),
                       Text(
-                        '${widget.profile.displayName} · ${s.financierLabel}',
+                        '${widget.profile.nickname} · ${s.financierLabel}',
                         style: TextStyle(
                           color: accentLight,
                           fontSize: 12,
@@ -419,7 +419,7 @@ class _MemberPaymentTile extends StatelessWidget {
               ),
               child: Center(
                 child: Text(
-                  member.displayName[0].toUpperCase(),
+                  member.nickname[0].toUpperCase(),
                   style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.w800,
@@ -432,7 +432,7 @@ class _MemberPaymentTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(member.displayName,
+                  Text(member.nickname,
                       style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w700,

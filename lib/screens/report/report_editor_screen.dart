@@ -652,7 +652,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                               ),
                               child: Center(
                                 child: Text(
-                                  widget.profile.displayName[0].toUpperCase(),
+                                  widget.profile.nickname[0].toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
@@ -663,7 +663,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              widget.profile.displayName,
+                              widget.profile.nickname,
                               style: const TextStyle(
                                 color: Color(0xFFE2E8F0),
                                 fontSize: 20,

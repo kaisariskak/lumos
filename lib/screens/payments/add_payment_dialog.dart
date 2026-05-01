@@ -161,7 +161,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                         ),
                       ),
                       Text(
-                        widget.member.displayName,
+                        widget.member.nickname,
                         style: const TextStyle(
                             color: Color(0xFF64748B), fontSize: 12),
                       ),

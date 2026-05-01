@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
-import '../repositories/invite_code_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
@@ -119,59 +118,19 @@ class _AuthGateState extends State<AuthGate> {
 
   /// Called by InviteCodeScreen when the user enters a valid code.
   Future<void> _activateCode(InviteCode code) async {
+    // Stub: legacy flow (existing profile, new group) is rewritten in Task 6.
+    // For new users without a profile, RegistrationScreen + RPC handle creation.
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
     try {
-      final profileRepo = ProfileRepository(Supabase.instance.client);
-      final codeRepo = InviteCodeRepository(Supabase.instance.client);
-      final email = user.email ?? '';
-
-      if (_profile == null) {
-        // New user — create profile based on code role
-        if (code.roleType == 'ADMIN') {
-          await profileRepo.createProfile(
-            id: user.id,
-            displayName: user.userMetadata?['full_name'] as String? ??
-                user.userMetadata?['name'] as String? ??
-                email,
-            email: email,
-            avatarUrl: user.userMetadata?['avatar_url'] as String?,
-            role: 'admin',
-            superAdminId: code.createdBy,
-          );
-        } else {
-          final profile = await profileRepo.createProfile(
-            id: user.id,
-            displayName: user.userMetadata?['full_name'] as String? ??
-                user.userMetadata?['name'] as String? ??
-                email,
-            email: email,
-            avatarUrl: user.userMetadata?['avatar_url'] as String?,
-            role: 'user',
-            createdByAdminId: code.createdBy,
-          );
-          if (code.groupId != null) {
-            await profileRepo.updateCurrentGroup(profile.id, code.groupId);
-          }
-        }
-      } else {
-        // Profile exists but no group — assign group from USER code
+      if (_profile != null) {
+        // Existing profile, no group — assign group from USER code.
         if (code.roleType == 'USER' && code.groupId != null) {
-          await profileRepo.updateCurrentGroup(_profile!.id, code.groupId);
+          final profileRepo = ProfileRepository(Supabase.instance.client);
+          await profileRepo.updateCurrentGroup(_profile!.id, code.groupId!);
         }
       }
-
-      // Only mark ADMIN codes as used (one-time). USER codes stay active for 24 h.
-      if (code.roleType == 'ADMIN') {
-        try {
-          await codeRepo.markUsed(code.id);
-        } catch (e) {
-          debugPrint('markUsed failed for code ${code.code} (id=${code.id}): $e');
-        }
-      }
-
-      // Reload profile to enter the app
       await _loadProfile();
     } catch (e) {
       debugPrint('Code activation error: $e');
