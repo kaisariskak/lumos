@@ -83,7 +83,6 @@ class AppStrings {
   final String noOtherGroups;
   final String selectNewGroup;
   final String addUser;
-  final String emailHint;
   final String groupNameLabel;
   final String startDateOptional;
   final String selectStartDate;
@@ -99,7 +98,6 @@ class AppStrings {
   final String addFailed;
   final String myAdminsTitle;
   final String noAdmins;
-  final String addAdminHint;
   final String ungroupedUsers;
   final String ungroupedUsersDesc;
   final String maxValuesTitle;
@@ -119,7 +117,6 @@ class AppStrings {
   final String allowedEmails;
   final String noAllowedEmails;
   final String addEmail;
-  final String emailLabel;
   final String removeFromList;
 
   // ── Payments ──────────────────────────────────────────
@@ -232,6 +229,18 @@ class AppStrings {
   final String pinWrong;
   final String pinMismatch;
 
+  // ── Registration ───────────────────────────────────────
+  final String registrationTitle;
+  final String nicknameLabel;
+  final String nicknameHint;
+  final String inviteCodeLabel;
+  final String inviteCodeShortHint;
+  final String submitRegistration;
+  final String errorNicknameTaken;
+  final String errorNicknameInvalid;
+  final String errorInviteInvalid;
+  final String errorInviteExpired;
+
   const AppStrings({
     required this.languageCode,
     required this.appTitle,
@@ -303,7 +312,6 @@ class AppStrings {
     required this.noOtherGroups,
     required this.selectNewGroup,
     required this.addUser,
-    required this.emailHint,
     required this.groupNameLabel,
     required this.startDateOptional,
     required this.selectStartDate,
@@ -319,7 +327,6 @@ class AppStrings {
     required this.addFailed,
     required this.myAdminsTitle,
     required this.noAdmins,
-    required this.addAdminHint,
     required this.ungroupedUsers,
     required this.ungroupedUsersDesc,
     required this.maxValuesTitle,
@@ -337,7 +344,6 @@ class AppStrings {
     required this.allowedEmails,
     required this.noAllowedEmails,
     required this.addEmail,
-    required this.emailLabel,
     required this.removeFromList,
     required this.financierLabel,
     required this.paymentsTitle,
@@ -433,6 +439,16 @@ class AppStrings {
     required this.pinConfirm,
     required this.pinWrong,
     required this.pinMismatch,
+    required this.registrationTitle,
+    required this.nicknameLabel,
+    required this.nicknameHint,
+    required this.inviteCodeLabel,
+    required this.inviteCodeShortHint,
+    required this.submitRegistration,
+    required this.errorNicknameTaken,
+    required this.errorNicknameInvalid,
+    required this.errorInviteInvalid,
+    required this.errorInviteExpired,
   });
 }
 
@@ -514,7 +530,6 @@ const _kk = AppStrings(
   noOtherGroups: 'Басқа топ жоқ',
   selectNewGroup: 'Жаңа топты таңдаңыз',
   addUser: '➕ Пайдаланушы қосу',
-  emailHint: 'Email мекенжайы',
   groupNameLabel: 'Топ атауы',
   startDateOptional: 'Кезең (міндетті емес)',
   selectStartDate: 'Басталу күнін таңдаңыз',
@@ -530,7 +545,6 @@ const _kk = AppStrings(
   addFailed: 'Жаңарту сәтсіз: RLS рұқсаты жоқ немесе топ табылмады',
   myAdminsTitle: 'Менің Администраторларым',
   noAdmins: 'Администраторлар жоқ',
-  addAdminHint: 'Жаңа admin қосу',
   ungroupedUsers: 'Топсыз пайдаланушылар',
   ungroupedUsersDesc: 'Топтан шығарылған. Тек супер-admin қосымша топ тағайындай алады.',
   maxValuesTitle: 'Максималды мəндер',
@@ -549,7 +563,6 @@ const _kk = AppStrings(
   allowedEmails: 'Рұқсат берілген email-дер',
   noAllowedEmails: 'Рұқсат берілген email жоқ',
   addEmail: 'Email қосу',
-  emailLabel: 'Email',
   removeFromList: 'Тізімнен өшіру',
 
   financierLabel: 'Қаржышы',
@@ -648,6 +661,16 @@ const _kk = AppStrings(
   pinConfirm: 'PIN кодты растаңыз',
   pinWrong: 'Қате PIN код',
   pinMismatch: 'PIN коды сәйкес келмеді',
+  registrationTitle: 'Тіркелу',
+  nicknameLabel: 'Лақап ат',
+  nicknameHint: '2–32 таңба',
+  inviteCodeLabel: 'Шақыру коды',
+  inviteCodeShortHint: 'XXX-XXXXXX',
+  submitRegistration: 'Тіркелу',
+  errorNicknameTaken: 'Бұл лақап ат бос емес',
+  errorNicknameInvalid: 'Лақап ат дұрыс емес',
+  errorInviteInvalid: 'Шақыру коды табылмады',
+  errorInviteExpired: 'Шақыру коды мерзімі өтіп кетті',
 );
 
 // ── Russian strings ────────────────────────────────────────────────────────
@@ -728,7 +751,6 @@ const _ru = AppStrings(
   noOtherGroups: 'Других групп нет',
   selectNewGroup: 'Выберите новую группу',
   addUser: '➕ Добавить пользователя',
-  emailHint: 'Email адрес',
   groupNameLabel: 'Название группы',
   startDateOptional: 'Период (необязательно)',
   selectStartDate: 'Выберите дату начала',
@@ -744,7 +766,6 @@ const _ru = AppStrings(
   addFailed: 'Обновление не удалось: нет RLS разрешения или группа не найдена',
   myAdminsTitle: 'Мои администраторы',
   noAdmins: 'Нет администраторов',
-  addAdminHint: 'Добавить нового admin',
   ungroupedUsers: 'Пользователи без группы',
   ungroupedUsersDesc: 'Удалены из группы. Только супер-admin может назначить дополнительную группу.',
   maxValuesTitle: 'Максимальные значения',
@@ -763,7 +784,6 @@ const _ru = AppStrings(
   allowedEmails: 'Разрешённые email-адреса',
   noAllowedEmails: 'Разрешённых email нет',
   addEmail: 'Добавить email',
-  emailLabel: 'Email',
   removeFromList: 'Удалить из списка',
 
   financierLabel: 'Финансист',
@@ -862,6 +882,16 @@ const _ru = AppStrings(
   metricCannotDeleteMsg: 'Нельзя удалить параметр, который уже использовался в отчётах.',
   metricDeleteTitle: 'Удалить параметр?',
   adminPersonalMetricsHint: 'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
+  registrationTitle: 'Регистрация',
+  nicknameLabel: 'Никнейм',
+  nicknameHint: '2–32 символа',
+  inviteCodeLabel: 'Код приглашения',
+  inviteCodeShortHint: 'XXX-XXXXXX',
+  submitRegistration: 'Зарегистрироваться',
+  errorNicknameTaken: 'Никнейм занят',
+  errorNicknameInvalid: 'Некорректный никнейм',
+  errorInviteInvalid: 'Код не найден',
+  errorInviteExpired: 'Код истёк',
 );
 
 // ── Category / Unit helpers ────────────────────────────────────────────────
