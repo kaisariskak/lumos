@@ -10,6 +10,7 @@ import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
 import '../screens/invite_code/invite_code_screen.dart';
 import '../screens/main_scaffold.dart';
+import '../screens/registration/registration_screen.dart';
 import '../screens/pin/pin_screen.dart';
 import '../services/pin_service.dart';
 
@@ -25,6 +26,7 @@ class _AuthGateState extends State<AuthGate> {
   bool _checkingBiometric = true;
   bool _showGroupPicker = false;
   bool _showInviteCode = false;
+  bool _showRegistration = false;
   bool _profileError = false;
   bool _pinRequired = false;
 
@@ -47,6 +49,7 @@ class _AuthGateState extends State<AuthGate> {
           _profile = null;
           _showGroupPicker = false;
           _showInviteCode = false;
+          _showRegistration = false;
         });
       }
     });
@@ -87,27 +90,33 @@ class _AuthGateState extends State<AuthGate> {
       IbadatProfile? profile = await repo.getProfile(user.id);
 
       if (profile == null) {
-        // No profile → require invite code to register
+        // No profile → must register (nickname + invite code).
         if (!mounted) return;
-        setState(() => _showInviteCode = true);
+        setState(() {
+          _profile = null;
+          _showRegistration = true;
+          _showInviteCode = false;
+        });
         return;
-      } else if (profile.currentGroupId == null && profile.role == 'user') {
-        // Profile exists but no group → require invite code to join a group
+      }
+
+      if (profile.currentGroupId == null && profile.role == 'user') {
+        // Existing profile, no group → only need a USER invite code.
         if (!mounted) return;
         setState(() {
           _profile = profile;
           _showInviteCode = true;
+          _showRegistration = false;
         });
         return;
       }
 
       if (!mounted) return;
-      // Admins and super-admins always go straight to MainScaffold.
-      // Admins create their first group from within the admin panel.
       setState(() {
         _profile = profile;
         _showGroupPicker = false;
         _showInviteCode = false;
+        _showRegistration = false;
       });
     } catch (e) {
       debugPrint('Profile load error: $e');
@@ -116,27 +125,40 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  /// Called by InviteCodeScreen when the user enters a valid code.
+  /// Existing-user code activation: only ever called for USER codes
+  /// (the case "profile exists, no current_group_id").
   Future<void> _activateCode(InviteCode code) async {
-    // Stub: legacy flow (existing profile, new group) is rewritten in Task 6.
-    // For new users without a profile, RegistrationScreen + RPC handle creation.
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
     try {
-      if (_profile != null) {
-        // Existing profile, no group — assign group from USER code.
-        if (code.roleType == 'USER' && code.groupId != null) {
-          final profileRepo = ProfileRepository(Supabase.instance.client);
-          await profileRepo.updateCurrentGroup(_profile!.id, code.groupId!);
-        }
+      if (_profile == null) {
+        // Defensive: should be impossible — RegistrationScreen handles new users.
+        debugPrint('_activateCode called without profile; reloading');
+        await _loadProfile();
+        return;
       }
+
+      if (code.roleType == 'USER' && code.groupId != null) {
+        final profileRepo = ProfileRepository(Supabase.instance.client);
+        await profileRepo.updateCurrentGroup(_profile!.id, code.groupId!);
+      }
+
       await _loadProfile();
     } catch (e) {
       debugPrint('Code activation error: $e');
       if (!mounted) return;
       setState(() => _profileError = true);
     }
+  }
+
+  void _onRegistered(IbadatProfile profile) {
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _showRegistration = false;
+      _showInviteCode = false;
+    });
   }
 
   Future<void> _logout() async {
@@ -211,6 +233,14 @@ class _AuthGateState extends State<AuthGate> {
             ],
           ),
         ),
+      );
+    }
+
+    // Registration: nickname + invite code (new users only)
+    if (_showRegistration) {
+      return RegistrationScreen(
+        onRegistered: _onRegistered,
+        onLogout: _logout,
       );
     }
 
