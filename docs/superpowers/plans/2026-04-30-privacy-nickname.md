@@ -849,6 +849,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       widget.onRegistered(profile);
     } on RegistrationException catch (e) {
       if (!mounted) return;
+      // not_authenticated / already_registered are recoverable only via re-auth:
+      // sign the user out so AuthGate refetches the profile from a clean state.
+      if (e.reason == 'not_authenticated' || e.reason == 'already_registered') {
+        widget.onLogout();
+        return;
+      }
       setState(() {
         _loading = false;
         switch (e.reason) {
@@ -864,12 +870,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           case 'expired_code':
           case 'code_already_used':
             _codeError = s.errorInviteExpired;
-            break;
-          case 'already_registered':
-            // Server says profile exists — bounce back via onRegistered.
-            // Caller's _loadProfile will refetch and route correctly.
-            // We have no profile object here, so just log out / let parent reload.
-            _codeError = '${s.error}: $e';
             break;
           default:
             _codeError = '${s.error}: $e';
