@@ -1169,6 +1169,7 @@ Replace `_loadProfile` (around line 83) with:
           _profile = null;
           _showRegistration = true;
           _showInviteCode = false;
+          _showGroupPicker = false;
         });
         return;
       }
@@ -1180,6 +1181,7 @@ Replace `_loadProfile` (around line 83) with:
           _profile = profile;
           _showInviteCode = true;
           _showRegistration = false;
+          _showGroupPicker = false;
         });
         return;
       }
@@ -1233,13 +1235,19 @@ Replace `_activateCode` (the stub from Task 4) with the final version:
 Add a new handler:
 
 ```dart
-  void _onRegistered(IbadatProfile profile) {
+  Future<void> _onRegistered(IbadatProfile profile) async {
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _showRegistration = false;
       _showInviteCode = false;
+      _showGroupPicker = false;
     });
+    // Re-derive routing from canonical server state. Trusting the RPC
+    // response shape risks landing in the wrong branch if a field that
+    // affects routing (e.g. currentGroupId) wasn't populated in the
+    // returned row.
+    await _loadProfile();
   }
 ```
 
@@ -1250,6 +1258,7 @@ In `_AuthGateState.onAuthStateChange` listener, when `signedOut` clear `_showReg
         setState(() {
           _checkingBiometric = false;
           _pinRequired = false;
+          _profileError = false;
           _profile = null;
           _showGroupPicker = false;
           _showInviteCode = false;

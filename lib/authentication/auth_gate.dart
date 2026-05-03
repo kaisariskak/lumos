@@ -46,6 +46,7 @@ class _AuthGateState extends State<AuthGate> {
         setState(() {
           _checkingBiometric = false;
           _pinRequired = false;
+          _profileError = false;
           _profile = null;
           _showGroupPicker = false;
           _showInviteCode = false;
@@ -96,6 +97,7 @@ class _AuthGateState extends State<AuthGate> {
           _profile = null;
           _showRegistration = true;
           _showInviteCode = false;
+          _showGroupPicker = false;
         });
         return;
       }
@@ -107,6 +109,7 @@ class _AuthGateState extends State<AuthGate> {
           _profile = profile;
           _showInviteCode = true;
           _showRegistration = false;
+          _showGroupPicker = false;
         });
         return;
       }
@@ -152,13 +155,19 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  void _onRegistered(IbadatProfile profile) {
+  Future<void> _onRegistered(IbadatProfile profile) async {
     if (!mounted) return;
     setState(() {
       _profile = profile;
       _showRegistration = false;
       _showInviteCode = false;
+      _showGroupPicker = false;
     });
+    // Re-derive routing from canonical server state. Trusting the RPC
+    // response shape risks landing in the wrong branch if a field that
+    // affects routing (e.g. currentGroupId) wasn't populated in the
+    // returned row.
+    await _loadProfile();
   }
 
   Future<void> _logout() async {
