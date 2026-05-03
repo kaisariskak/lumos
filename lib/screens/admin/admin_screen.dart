@@ -73,15 +73,12 @@ class _AdminScreenState extends State<AdminScreen> {
   bool _metricsExpanded = false;
   int _groupMetricsLoadVersion = 0;
   final _newGroupCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
   final _periodLabelCtrl = TextEditingController();
   DateTime? _periodStart;
   DateTime? _periodEnd;
   DateTime? _newGroupPeriodStart;
   DateTime? _newGroupPeriodEnd;
   IbadatGroup? _selectedGroup;
-  bool _isAdding = false;
-  String? _addError;
   final Set<String> _expandedGroups = {};
   String? _deletingPeriodId; // id периода, который проверяется/удаляется
 
@@ -139,7 +136,6 @@ class _AdminScreenState extends State<AdminScreen> {
   @override
   void dispose() {
     _newGroupCtrl.dispose();
-    _emailCtrl.dispose();
     _periodLabelCtrl.dispose();
     super.dispose();
   }
@@ -350,41 +346,6 @@ class _AdminScreenState extends State<AdminScreen> {
       }
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
-    }
-  }
-
-  /// Super-admin creates an admin user
-  Future<void> _addAdmin() async {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty) return;
-    setState(() { _isAdding = true; _addError = null; });
-    try {
-      final user = await _profileRepo.getUserByEmail(email);
-      if (!mounted) return;
-      if (user == null) {
-        // Пользователь ещё не зарегистрирован — попросите его сначала
-        // пройти регистрацию по ADM-коду.
-        setState(() {
-          _addError = 'Пользователь с $email не найден. Сначала отправьте ему ADM-код для регистрации.';
-          _isAdding = false;
-        });
-      } else if (user.role == 'admin' && user.superAdminId == widget.profile.id) {
-        setState(() { _addError = '${user.nickname} бұл супер-adminдің admin тізімінде бар'; _isAdding = false; });
-      } else {
-        // Existing user — promote to admin and link to this super-admin
-        await _profileRepo.updateRole(user.id, 'admin');
-        await _profileRepo.setSuperAdminId(user.id, widget.profile.id);
-        _emailCtrl.clear();
-        await _loadData();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${user.nickname} admin болды 👑'),
-          backgroundColor: const Color(0xFF059669),
-        ));
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { _addError = '${S.of(context).error}: $e'; _isAdding = false; });
     }
   }
 
@@ -1234,63 +1195,6 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ),
                 )),
-          const SizedBox(height: 12),
-          const Divider(color: Color(0xFF1E293B)),
-          const SizedBox(height: 12),
-          // Add new admin form
-          Text(s.addAdminHint,
-              style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _emailCtrl,
-                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13),
-                  decoration: InputDecoration(
-                    hintText: s.emailHint,
-                    hintStyle: const TextStyle(color: Color(0xFF475569)),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.05),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _isAdding ? null : _addAdmin,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF59E0B),
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _isAdding
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.black))
-                    : Text(s.add,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-          if (_addError != null) ...[
-            const SizedBox(height: 6),
-            Text(_addError!,
-                style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12)),
-          ],
         ],
       ),
     );
