@@ -75,7 +75,9 @@ class _MainScaffoldState extends State<MainScaffold>
       final group = await repo.getGroupById(widget.profile.currentGroupId!);
       if (!mounted) return;
       final isFinancier = group != null && group.financierId == widget.profile.id;
-      final tabCount = 2 + (isFinancier ? 1 : 0) + 1;
+      final isAdmin = widget.profile.isAdmin;
+      final showPayments = group != null && (isFinancier || isAdmin);
+      final tabCount = 2 + (showPayments ? 1 : 0) + 1;
       setState(() {
         _group = group;
         _isLoading = false;
@@ -113,6 +115,7 @@ class _MainScaffoldState extends State<MainScaffold>
     final isAdmin = widget.profile.isAdmin;
     final group = _group;
     final isFinancier = group != null && group.financierId == widget.profile.id;
+    final showPayments = group != null && (isFinancier || isAdmin);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -147,7 +150,7 @@ class _MainScaffoldState extends State<MainScaffold>
                     onSaved: () => _homeKey.currentState?.reload(),
                     onBack: () => setState(() => _tabIndex = 0),
                   ),
-                  if (isFinancier)
+                  if (showPayments)
                     PaymentsScreen(
                       profile: widget.profile,
                       group: group,
@@ -180,7 +183,7 @@ class _MainScaffoldState extends State<MainScaffold>
           : _BottomNav(
               currentIndex: _tabIndex,
               isAdmin: isAdmin,
-              isFinancier: isFinancier,
+              showPayments: showPayments,
               groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
                 setState(() => _tabIndex = i);
@@ -239,14 +242,14 @@ class _NoGroupPlaceholder extends StatelessWidget {
 class _BottomNav extends StatelessWidget {
   final int currentIndex;
   final bool isAdmin;
-  final bool isFinancier;
+  final bool showPayments;
   final String groupName;
   final ValueChanged<int> onTap;
 
   const _BottomNav({
     required this.currentIndex,
     required this.isAdmin,
-    required this.isFinancier,
+    required this.showPayments,
     required this.groupName,
     required this.onTap,
   });
@@ -257,7 +260,7 @@ class _BottomNav extends StatelessWidget {
     final tabs = [
       _NavTab(icon: '👥', label: s.tabList),
       _NavTab(icon: '📝', label: s.tabReport),
-      if (isFinancier) _NavTab(icon: '💰', label: s.tabPayments),
+      if (showPayments) _NavTab(icon: '💰', label: s.tabPayments),
       _NavTab(icon: isAdmin ? '👑' : '⚙️', label: isAdmin ? s.tabAdmin : s.tabProfile),
     ];
 
