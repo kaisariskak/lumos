@@ -18,7 +18,6 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      await GoogleSignIn.instance.signOut();
       final googleUser = await GoogleSignIn.instance.authenticate();
       final auth = googleUser.authentication;
       final idToken = auth.idToken;
