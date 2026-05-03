@@ -244,11 +244,6 @@ class _DetailScreenState extends State<DetailScreen> {
                               widget.profile.nickname,
                               style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 22, fontWeight: FontWeight.w800),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.profile.email,
-                              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                            ),
                             const SizedBox(height: 10),
 
                             // Period badge / navigator

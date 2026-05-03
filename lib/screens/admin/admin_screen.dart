@@ -1217,9 +1217,6 @@ class _AdminScreenState extends State<AdminScreen> {
                                     color: Color(0xFFE2E8F0),
                                     fontWeight: FontWeight.w600,
                                     fontSize: 13)),
-                            Text(admin.email,
-                                style: const TextStyle(
-                                    color: Color(0xFF64748B), fontSize: 11)),
                           ],
                         ),
                       ),
@@ -1362,9 +1359,6 @@ class _AdminScreenState extends State<AdminScreen> {
                                       color: Color(0xFFE2E8F0),
                                       fontWeight: FontWeight.w600,
                                       fontSize: 13)),
-                              Text(user.email,
-                                  style: const TextStyle(
-                                      color: Color(0xFF64748B), fontSize: 11)),
                             ],
                           ),
                         ),
@@ -1863,9 +1857,6 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ],
                 ),
-                Text(m.email,
-                    style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 10)),
               ],
             ),
           ),
