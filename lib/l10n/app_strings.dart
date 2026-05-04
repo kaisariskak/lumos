@@ -209,6 +209,9 @@ class AppStrings {
   final String customCatNameHint;
   final String customCatUnitLabel;
   final String customCatMaxLabel;
+  final String customCatScoringAmountLabel;
+  final String customCatScoringAmountOptionalLabel;
+  final String customCatPointsValueLabel;
   final String customCatEmptyTitle;
   final String customCatEmptyHint;
   final String metricCannotDeleteTitle;
@@ -422,6 +425,9 @@ class AppStrings {
     required this.customCatNameHint,
     required this.customCatUnitLabel,
     required this.customCatMaxLabel,
+    required this.customCatScoringAmountLabel,
+    required this.customCatScoringAmountOptionalLabel,
+    required this.customCatPointsValueLabel,
     required this.customCatEmptyTitle,
     required this.customCatEmptyHint,
     required this.metricCannotDeleteTitle,
@@ -644,6 +650,9 @@ const _kk = AppStrings(
   customCatNameHint: 'Мысалы: Қосымша намаз',
   customCatUnitLabel: 'Өлшем бірлігі:',
   customCatMaxLabel: 'Апталық максимум:',
+  customCatScoringAmountLabel: 'Балл есептеу мөлшері',
+  customCatScoringAmountOptionalLabel: 'Балл есептеу мөлшері (міндетті емес)',
+  customCatPointsValueLabel: 'Осы мөлшер үшін балл',
   customCatEmptyTitle: 'Көрсеткіштер әлі қосылмаған',
   customCatEmptyHint: 'Әкімші бұл топқа көрсеткіштерді қосқан кезде, олар есепте автоматты түрде көрінеді.',
   metricCannotDeleteTitle: 'Жою мүмкін емес',
@@ -876,6 +885,10 @@ const _ru = AppStrings(
   customCatNameHint: 'Например: Доп. намаз',
   customCatUnitLabel: 'Единица измерения:',
   customCatMaxLabel: 'Недельный максимум:',
+  customCatScoringAmountLabel: 'Количество для начисления балла',
+  customCatScoringAmountOptionalLabel:
+      'Количество для начисления балла (необязательно)',
+  customCatPointsValueLabel: 'Балл за количество',
   customCatEmptyTitle: 'Показатели ещё не настроены',
   customCatEmptyHint: 'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
   metricCannotDeleteTitle: 'Удаление недоступно',

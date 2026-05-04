@@ -50,15 +50,18 @@ CREATE POLICY profiles_groupmates_read ON ibadat_profiles
     )
   );
 
--- Group admin reads members of any group they admin.
+-- NOTE: A `profiles_admin_reads_members` policy was originally proposed here
+-- with `USING (current_group_id IN (SELECT id FROM ibadat_groups WHERE admin_id = auth.uid()))`.
+-- It was REMOVED because the subquery on `ibadat_groups` triggers that table's
+-- RLS, and at least one pre-existing `ibadat_groups` policy ("Allow write for
+-- super admin" with cmd=*) does `EXISTS (SELECT 1 FROM ibadat_profiles ...)`,
+-- closing a cycle profiles → groups → profiles → infinite recursion (PG 42P17).
+-- Admin reads of all profiles are already granted by the pre-existing
+-- `admin_select_all` policy (USING get_my_role() = 'admin'), so this policy
+-- was a duplicate that only added the bug.
+-- Before adding any new ibadat_profiles policy that subqueries another table,
+-- audit that table's RLS policies for any reverse references to ibadat_profiles.
 DROP POLICY IF EXISTS profiles_admin_reads_members ON ibadat_profiles;
-CREATE POLICY profiles_admin_reads_members ON ibadat_profiles
-  FOR SELECT TO authenticated
-  USING (
-    current_group_id IN (
-      SELECT id FROM ibadat_groups WHERE admin_id = auth.uid()
-    )
-  );
 
 -- Admin reads ungrouped users they created (needed for getUngroupedUsersByAdminIds).
 DROP POLICY IF EXISTS profiles_admin_reads_ungrouped ON ibadat_profiles;
@@ -75,36 +78,29 @@ CREATE POLICY profiles_superadmin_reads_admins ON ibadat_profiles
   FOR SELECT TO authenticated
   USING (super_admin_id = auth.uid());
 
--- Self-update: only nickname can change. role / super_admin_id /
--- created_by_admin_id stay frozen.
+-- NOTE: A `profiles_self_update` policy was originally proposed here with
+-- WITH CHECK clauses like `role = (SELECT role FROM ibadat_profiles WHERE id = auth.uid())`
+-- to keep role / super_admin_id / created_by_admin_id frozen on self-update.
+-- It was REMOVED — the self-referencing subqueries cause PG 42P17 recursion.
+-- Pre-existing `ibadat_profiles_update` (USING `id = auth.uid()`) already
+-- restricts updates to the owner. To enforce frozen columns properly, use a
+-- BEFORE UPDATE trigger that re-asserts OLD.role/OLD.super_admin_id/etc.
+-- onto NEW; a SQL trigger sees pre-images deterministically and avoids RLS.
 DROP POLICY IF EXISTS profiles_self_update ON ibadat_profiles;
-CREATE POLICY profiles_self_update ON ibadat_profiles
-  FOR UPDATE TO authenticated
-  USING (auth.uid() = id)
-  WITH CHECK (
-    auth.uid() = id
-    AND role = (SELECT role FROM ibadat_profiles WHERE id = auth.uid())
-    AND super_admin_id IS NOT DISTINCT FROM
-        (SELECT super_admin_id FROM ibadat_profiles WHERE id = auth.uid())
-    AND created_by_admin_id IS NOT DISTINCT FROM
-        (SELECT created_by_admin_id FROM ibadat_profiles WHERE id = auth.uid())
-  );
 
 -- INSERT is intentionally not granted — `register_with_invite` runs
 -- with SECURITY DEFINER and bypasses RLS for the insert.
 
--- DELETE: keep whatever the existing policy was. If unknown, the safe
--- canonical set is "self-delete OR super-admin deletes". Adapt as needed:
+-- NOTE: A `profiles_delete` policy was originally proposed here with
+-- `USING (auth.uid() = id OR EXISTS (SELECT 1 FROM ibadat_profiles sa WHERE
+--  sa.id = auth.uid() AND sa.role = 'super_admin'))`.
+-- It was REMOVED — the EXISTS subquery on the same table is also a recursion
+-- trap if a sibling policy with cmd=* triggers cross-table evaluation.
+-- Pre-existing `Admins can delete member profiles` and `super_admin_all`
+-- (cmd=*, using get_my_role() = 'super_admin') already cover the use cases.
+-- For self-delete (rare), use the get_my_role() helper or a dedicated
+-- SECURITY DEFINER function instead of an inline subquery.
 DROP POLICY IF EXISTS profiles_delete ON ibadat_profiles;
-CREATE POLICY profiles_delete ON ibadat_profiles
-  FOR DELETE TO authenticated
-  USING (
-    auth.uid() = id
-    OR EXISTS (
-      SELECT 1 FROM ibadat_profiles sa
-       WHERE sa.id = auth.uid() AND sa.role = 'super_admin'
-    )
-  );
 
 -- 4. RPC: is_nickname_taken (UX helper) ────────────────────────────────────
 CREATE OR REPLACE FUNCTION is_nickname_taken(p_nickname text) RETURNS boolean

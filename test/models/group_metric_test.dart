@@ -14,6 +14,8 @@ void main() {
       'color_value': 0xFF0D9488,
       'unit': 'page',
       'max_value': 40,
+      'points_per_unit': null,
+      'points_value': null,
       'order_index': 2,
       'created_at': '2026-04-18T10:00:00.000Z',
     });
@@ -27,6 +29,8 @@ void main() {
     expect(metric.color, const Color(0xFF0D9488));
     expect(metric.unit, 'page');
     expect(metric.maxValue, 40);
+    expect(metric.pointsPerUnit, isNull);
+    expect(metric.pointsValue, isNull);
     expect(metric.orderIndex, 2);
     expect(metric.createdAt, DateTime.parse('2026-04-18T10:00:00.000Z'));
 
@@ -39,6 +43,8 @@ void main() {
       'color_value': 0xFF0D9488.toSigned(32),
       'unit': 'page',
       'max_value': 40,
+      'points_per_unit': null,
+      'points_value': null,
       'order_index': 2,
       'created_at': '2026-04-18T10:00:00.000Z',
     });

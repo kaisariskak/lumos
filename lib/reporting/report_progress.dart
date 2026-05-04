@@ -17,6 +17,31 @@ double reportProgress(IbadatReport report, Iterable<GroupMetric> metrics) {
   return total / list.length;
 }
 
+double? pointsForMetricValue(int value, GroupMetric metric) {
+  final amountPerPoint = metric.pointsPerUnit;
+  final pointsValue = metric.pointsValue;
+  if (amountPerPoint == null ||
+      amountPerPoint <= 0 ||
+      pointsValue == null ||
+      pointsValue <= 0) {
+    return null;
+  }
+  return value / amountPerPoint * pointsValue;
+}
+
+double? maxPointsForMetric(GroupMetric metric) =>
+    pointsForMetricValue(metric.maxValue, metric);
+
+String formatMetricPoints(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+  return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(
+        RegExp(r'\.$'),
+        '',
+      );
+}
+
 List<int> quickValuesFor(GroupMetric metric) {
   return [0.25, 0.5, 0.75, 1.0]
       .map((fraction) => (metric.maxValue * fraction).round())

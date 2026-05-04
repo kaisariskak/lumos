@@ -71,12 +71,30 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Future<void> _loadMetrics() async {
     try {
-      final metrics = widget.adminId != null
-          ? await _metricRepo.getForAdmin(widget.adminId!)
-          : await _metricRepo.getForGroup(widget.groupId);
+      // Always load group metrics for the current group context.
+      // Additionally, when viewing an admin's own card (adminId != null),
+      // also load that admin's personal metrics. Merge with id-dedup so a
+      // metric that somehow appears in both scopes is shown once.
+      final results = await Future.wait([
+        if (widget.groupId.isNotEmpty) _metricRepo.getForGroup(widget.groupId),
+        if (widget.adminId != null) _metricRepo.getForAdmin(widget.adminId!),
+      ]);
+      final seen = <String>{};
+      final merged = <GroupMetric>[];
+      for (final list in results) {
+        for (final m in list) {
+          if (m.id == null) continue;
+          if (seen.add(m.id!)) merged.add(m);
+        }
+      }
+      merged.sort((a, b) {
+        final byOrder = a.orderIndex.compareTo(b.orderIndex);
+        if (byOrder != 0) return byOrder;
+        return a.createdAt.compareTo(b.createdAt);
+      });
       if (mounted) {
         setState(() {
-          _metrics = metrics;
+          _metrics = merged;
         });
       }
     } catch (_) {
@@ -279,8 +297,68 @@ class _DetailScreenState extends State<DetailScreen> {
                               ),
                             const SizedBox(height: 16),
 
-                            // Overall ring
-                            RingIndicator(value: score, size: 88),
+                            // Overall ring + optional total points
+                            Builder(
+                              builder: (context) {
+                                final scored = _visibleMetrics.where(
+                                  (m) => maxPointsForMetric(m) != null,
+                                );
+                                final totalPoints = scored.fold<double>(
+                                  0,
+                                  (sum, m) =>
+                                      sum + (pointsForMetricValue(_getValue(m.id!), m) ?? 0),
+                                );
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    RingIndicator(value: score, size: 72),
+                                    if (scored.isNotEmpty) ...[
+                                      const SizedBox(width: 20),
+                                      Container(
+                                        width: 72,
+                                        height: 72,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: accent.accent.withValues(alpha: 0.10),
+                                          border: Border.all(
+                                            color: accent.accent.withValues(alpha: 0.35),
+                                            width: 2,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              formatMetricPoints(totalPoints),
+                                              style: TextStyle(
+                                                color: accent.accentLight,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w800,
+                                                fontFamily: 'monospace',
+                                                height: 1.0,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'балл',
+                                              style: TextStyle(
+                                                color: accent.accentLight.withValues(alpha: 0.85),
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.0,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
                             const SizedBox(height: 20),
 
                             // Metric grid
@@ -298,16 +376,22 @@ class _DetailScreenState extends State<DetailScreen> {
                                 ),
                               )
                             else
-                              GridView.count(
-                                crossAxisCount: 2,
+                              GridView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                                childAspectRatio: 1.55,
-                                children: _visibleMetrics.map((metric) {
+                                itemCount: _visibleMetrics.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                  mainAxisExtent: 150,
+                                ),
+                                itemBuilder: (context, index) {
+                                  final metric = _visibleMetrics[index];
                                   final val = _getValue(metric.id!);
                                   final pct = metricProgress(val, metric.maxValue);
+                                  final earnedPoints = pointsForMetricValue(val, metric);
 
                                   return Container(
                                     padding: const EdgeInsets.all(10),
@@ -321,9 +405,40 @@ class _DetailScreenState extends State<DetailScreen> {
                                       children: [
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(metric.icon, style: const TextStyle(fontSize: 18)),
-                                            CategoryRing(value: pct, color: metric.color),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                CategoryRing(value: pct, color: metric.color),
+                                                if (earnedPoints != null) ...[
+                                                  const SizedBox(height: 4),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: metric.color.withValues(alpha: 0.18),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(
+                                                        color: metric.color.withValues(alpha: 0.4),
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      '${formatMetricPoints(earnedPoints)} балл',
+                                                      style: TextStyle(
+                                                        color: metric.color,
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w800,
+                                                        height: 1.0,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
                                           ],
                                         ),
                                         const Spacer(),
@@ -366,7 +481,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                       ],
                                     ),
                                   );
-                                }).toList(),
+                                },
                               ),
                           ],
                         ),

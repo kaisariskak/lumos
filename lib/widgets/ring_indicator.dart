@@ -116,14 +116,27 @@ class CategoryRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pct = value.clamp(0.0, 1.0);
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(
-        painter: _SmallRingPainter(
-          progress: value.clamp(0.0, 1.0),
-          color: color,
-        ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: Size(size, size),
+            painter: _SmallRingPainter(progress: pct, color: color),
+          ),
+          Text(
+            '${(pct * 100).round()}%',
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: size > 40 ? 10 : 9,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

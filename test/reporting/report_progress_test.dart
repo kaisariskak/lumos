@@ -54,6 +54,29 @@ void main() {
     expect(quickValuesFor(metric), [10, 20, 30, 40]);
   });
 
+  test('calculates points from amount and point value', () {
+    final metric = GroupMetric.test(
+      maxValue: 100,
+      pointsPerUnit: 50,
+      pointsValue: 1,
+    );
+
+    expect(maxPointsForMetric(metric), 2);
+    expect(pointsForMetricValue(75, metric), 1.5);
+    expect(pointsForMetricValue(100, metric), 2);
+  });
+
+  test('does not score metrics without both scoring fields', () {
+    expect(maxPointsForMetric(GroupMetric.test(maxValue: 100)), isNull);
+    expect(
+      pointsForMetricValue(
+        100,
+        GroupMetric.test(maxValue: 100, pointsPerUnit: 50),
+      ),
+      isNull,
+    );
+  });
+
   test('deduplicates quick values when max value is small', () {
     expect(quickValuesFor(GroupMetric.test(maxValue: 3)), [1, 2, 3]);
     expect(quickValuesFor(GroupMetric.test(maxValue: 2)), [1, 2]);

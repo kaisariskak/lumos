@@ -10,6 +10,10 @@ class GroupMetric {
   final int colorValue;
   final String unit;
   final int maxValue;
+  /// Optional admin-set amount for which [pointsValue] is awarded. Both fields
+  /// must be set for this metric to participate in points scoring.
+  final int? pointsPerUnit;
+  final int? pointsValue;
   final int orderIndex;
   final DateTime createdAt;
 
@@ -23,6 +27,8 @@ class GroupMetric {
     required this.colorValue,
     required this.unit,
     required this.maxValue,
+    this.pointsPerUnit,
+    this.pointsValue,
     required this.orderIndex,
     required this.createdAt,
   }) : assert(
@@ -44,6 +50,8 @@ class GroupMetric {
       colorValue: (json['color_value'] as num).toInt().toUnsigned(32),
       unit: json['unit'] as String,
       maxValue: (json['max_value'] as num).toInt(),
+      pointsPerUnit: (json['points_per_unit'] as num?)?.toInt(),
+      pointsValue: (json['points_value'] as num?)?.toInt(),
       orderIndex: (json['order_index'] as num).toInt(),
       createdAt: DateTime.parse(json['created_at'] as String),
     );
@@ -72,6 +80,8 @@ class GroupMetric {
       'color_value': colorValue.toSigned(32),
       'unit': unit,
       'max_value': maxValue,
+      'points_per_unit': pointsPerUnit,
+      'points_value': pointsValue,
       'order_index': orderIndex,
       'created_at': createdAt.toIso8601String(),
     };
@@ -87,6 +97,8 @@ class GroupMetric {
     int colorValue = 0xFF6366F1,
     String unit = 'unit',
     int maxValue = 10,
+    int? pointsPerUnit,
+    int? pointsValue,
     int orderIndex = 0,
     DateTime? createdAt,
   }) {
@@ -100,6 +112,8 @@ class GroupMetric {
       colorValue: colorValue,
       unit: unit,
       maxValue: maxValue,
+      pointsPerUnit: pointsPerUnit,
+      pointsValue: pointsValue,
       orderIndex: orderIndex,
       createdAt: createdAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );

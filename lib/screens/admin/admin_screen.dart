@@ -17,6 +17,7 @@ import '../../repositories/ibadat_report_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../reporting/report_progress.dart';
 import '../../services/pin_service.dart';
 import '../pin/pin_screen.dart';
 
@@ -3131,6 +3132,8 @@ class _AdminScreenState extends State<AdminScreen> {
         colorValue: _nextMetricColorValue(),
         unit: result.unit,
         maxValue: result.maxValue,
+        pointsPerUnit: result.pointsPerUnit,
+        pointsValue: result.pointsValue,
         orderIndex: _nextMetricOrderIndex(),
       );
       await _refreshGroupMetrics(groupId: group.id);
@@ -3211,66 +3214,16 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _editGroupMetric(GroupMetric metric) async {
     if (metric.id == null) return;
     final s = S.of(context);
-    final ctrl = TextEditingController(text: '${metric.maxValue}');
-    final newValue = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Text(metric.icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                metric.localizedName(s.languageCode),
-                style: const TextStyle(
-                    color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
-          decoration: InputDecoration(
-            labelText: 'Цель (${s.unitLabel(metric.unit)})',
-            labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF6366F1)),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(s.cancel,
-                style: const TextStyle(color: Color(0xFF64748B))),
-          ),
-          TextButton(
-            onPressed: () {
-              final v = int.tryParse(ctrl.text.trim());
-              if (v != null && v > 0) Navigator.pop(ctx, v);
-            },
-            child: Text(s.save,
-                style: const TextStyle(color: Color(0xFF6366F1))),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (newValue == null || !mounted) return;
+    final result = await _showEditMetricDialog(metric);
+    if (result == null || !mounted) return;
     if (_adminSelectedGroup?.id != metric.groupId) return;
     try {
-      await _metricRepo.updateMaxValue(metric.id!, newValue);
+      await _metricRepo.updateMaxValue(metric.id!, result.maxValue);
+      await _metricRepo.updatePointsRule(
+        metric.id!,
+        pointsPerUnit: result.pointsPerUnit,
+        pointsValue: result.pointsValue,
+      );
       await _refreshGroupMetrics(groupId: metric.groupId);
     } catch (e) {
       if (!mounted) return;
@@ -3279,6 +3232,16 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<_MetricEditResult?> _showEditMetricDialog(
+    GroupMetric metric, {
+    bool useRootNavigator = false,
+  }) {
+    return showDialog<_MetricEditResult>(
+      context: context,
+      useRootNavigator: useRootNavigator,
+      builder: (_) => _EditMetricDialog(metric: metric),
+    );
+  }
   int _nextMetricOrderIndex() {
     if (_groupMetrics.isEmpty) return 0;
     final maxOrderIndex = _groupMetrics
@@ -3348,6 +3311,8 @@ class _AdminScreenState extends State<AdminScreen> {
         colorValue: _nextAdminMetricColorValue(),
         unit: result.unit,
         maxValue: result.maxValue,
+        pointsPerUnit: result.pointsPerUnit,
+        pointsValue: result.pointsValue,
         orderIndex: _nextAdminMetricOrderIndex(),
       );
       await _refreshAdminMetrics();
@@ -3417,74 +3382,22 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Future<void> _editAdminMetric(GroupMetric metric) async {
     if (metric.id == null) return;
-    final ctrl = TextEditingController(text: '${metric.maxValue}');
     final s = S.of(context);
-    final newValue = await showDialog<int>(
-      context: context,
-      useRootNavigator: true,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Text(metric.icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                metric.localizedName(s.languageCode),
-                style: const TextStyle(
-                    color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
-          decoration: InputDecoration(
-            labelText: 'Цель (${s.unitLabel(metric.unit)})',
-            labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF6366F1)),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(s.cancel,
-                style: const TextStyle(color: Color(0xFF64748B))),
-          ),
-          TextButton(
-            onPressed: () {
-              final v = int.tryParse(ctrl.text.trim());
-              if (v != null && v > 0) Navigator.pop(ctx, v);
-            },
-            child: Text(s.save,
-                style: const TextStyle(color: Color(0xFF6366F1))),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (newValue == null || !mounted) return;
+    final result = await _showEditMetricDialog(metric, useRootNavigator: true);
+    if (result == null || !mounted) return;
     try {
-      await _metricRepo.updateMaxValue(metric.id!, newValue);
+      await _metricRepo.updateMaxValue(metric.id!, result.maxValue);
+      await _metricRepo.updatePointsRule(
+        metric.id!,
+        pointsPerUnit: result.pointsPerUnit,
+        pointsValue: result.pointsValue,
+      );
       await _refreshAdminMetrics();
     } catch (e) {
       if (!mounted) return;
       await _showAdminNoticeDialog(title: s.error, message: '$e');
     }
   }
-
   int _nextAdminMetricOrderIndex() {
     if (_adminMetrics.isEmpty) return 0;
     final maxOrderIndex = _adminMetrics
@@ -3722,6 +3635,8 @@ class _GroupMetricDialogResult {
   final String icon;
   final String unit;
   final int maxValue;
+  final int? pointsPerUnit;
+  final int? pointsValue;
 
   const _GroupMetricDialogResult({
     required this.nameRu,
@@ -3729,7 +3644,198 @@ class _GroupMetricDialogResult {
     required this.icon,
     required this.unit,
     required this.maxValue,
+    this.pointsPerUnit,
+    this.pointsValue,
   });
+}
+
+class _MetricEditResult {
+  final int maxValue;
+  final int? pointsPerUnit;
+  final int? pointsValue;
+
+  const _MetricEditResult({
+    required this.maxValue,
+    this.pointsPerUnit,
+    this.pointsValue,
+  });
+}
+
+class _EditMetricDialog extends StatefulWidget {
+  final GroupMetric metric;
+
+  const _EditMetricDialog({required this.metric});
+
+  @override
+  State<_EditMetricDialog> createState() => _EditMetricDialogState();
+}
+
+class _EditMetricDialogState extends State<_EditMetricDialog> {
+  late final TextEditingController _maxCtrl;
+  late final TextEditingController _amountCtrl;
+  late final TextEditingController _pointsCtrl;
+  String? _maxError;
+  String? _amountError;
+  String? _pointsError;
+
+  @override
+  void initState() {
+    super.initState();
+    final metric = widget.metric;
+    _maxCtrl = TextEditingController(text: '${metric.maxValue}');
+    _amountCtrl =
+        TextEditingController(text: metric.pointsPerUnit?.toString() ?? '');
+    _pointsCtrl =
+        TextEditingController(text: metric.pointsValue?.toString() ?? '');
+  }
+
+  @override
+  void dispose() {
+    _maxCtrl.dispose();
+    _amountCtrl.dispose();
+    _pointsCtrl.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _decoration(String label, String? error) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
+      errorText: error,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFF6366F1)),
+      ),
+    );
+  }
+
+  void _submit() {
+    final s = S.of(context);
+    final maxValue = int.tryParse(_maxCtrl.text.trim());
+    final amountRaw = _amountCtrl.text.trim();
+    final pointsRaw = _pointsCtrl.text.trim();
+    final amountValue = amountRaw.isEmpty ? null : int.tryParse(amountRaw);
+    final pointsValue = pointsRaw.isEmpty ? null : int.tryParse(pointsRaw);
+    final hasScoring = amountRaw.isNotEmpty || pointsRaw.isNotEmpty;
+    final invalidMsg =
+        s.languageCode == 'kk' ? 'Қате мән' : 'Некорректное значение';
+
+    if (maxValue == null ||
+        maxValue <= 0 ||
+        (hasScoring && (amountValue == null || amountValue <= 0)) ||
+        (hasScoring && (pointsValue == null || pointsValue <= 0))) {
+      setState(() {
+        _maxError =
+            (maxValue == null || maxValue <= 0) ? s.customCatMaxLabel : null;
+        _amountError =
+            hasScoring && (amountValue == null || amountValue <= 0)
+                ? invalidMsg
+                : null;
+        _pointsError =
+            hasScoring && (pointsValue == null || pointsValue <= 0)
+                ? invalidMsg
+                : null;
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _MetricEditResult(
+        maxValue: maxValue,
+        pointsPerUnit: hasScoring ? amountValue : null,
+        pointsValue: hasScoring ? pointsValue : null,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final metric = widget.metric;
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1E293B),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Text(metric.icon, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              metric.localizedName(s.languageCode),
+              style: const TextStyle(
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _maxCtrl,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              onChanged: (_) {
+                if (_maxError != null) setState(() => _maxError = null);
+              },
+              decoration:
+                  _decoration('Цель (${s.unitLabel(metric.unit)})', _maxError),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _amountCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              onChanged: (_) {
+                if (_amountError != null) setState(() => _amountError = null);
+              },
+              decoration: _decoration(
+                s.customCatScoringAmountLabel,
+                _amountError,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _pointsCtrl,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              onChanged: (_) {
+                if (_pointsError != null) setState(() => _pointsError = null);
+              },
+              decoration: _decoration(
+                s.customCatPointsValueLabel,
+                _pointsError,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            s.cancel,
+            style: const TextStyle(color: Color(0xFF64748B)),
+          ),
+        ),
+        TextButton(
+          onPressed: _submit,
+          child: Text(
+            s.save,
+            style: const TextStyle(color: Color(0xFF6366F1)),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _AddGroupMetricDialog extends StatefulWidget {
@@ -3743,11 +3849,36 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
   final _nameRuCtrl = TextEditingController();
   final _nameKkCtrl = TextEditingController();
   final _maxCtrl = TextEditingController(text: '10');
+  final _ballCtrl = TextEditingController();
+  final _pointsValueCtrl = TextEditingController();
   String _selectedIcon = '📖';
   String _selectedUnit = 'рет';
   String? _errorRu;
   String? _errorKk;
   String? _errorMax;
+  String? _errorBall;
+  String? _errorPointsValue;
+
+  int? get _parsedMax {
+    final v = int.tryParse(_maxCtrl.text.trim());
+    return (v != null && v > 0) ? v : null;
+  }
+
+  int? get _parsedBall {
+    final raw = _ballCtrl.text.trim();
+    if (raw.isEmpty) return null;
+    final v = int.tryParse(raw);
+    return (v != null && v > 0) ? v : null;
+  }
+
+  int? get _parsedPointsValue {
+    final raw = _pointsValueCtrl.text.trim();
+    if (raw.isEmpty) return null;
+    final v = int.tryParse(raw);
+    return (v != null && v > 0) ? v : null;
+  }
+
+  bool get _ballEnabled => _parsedMax != null;
 
   static const _icons = [
     '📖',
@@ -3776,6 +3907,8 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     _nameRuCtrl.dispose();
     _nameKkCtrl.dispose();
     _maxCtrl.dispose();
+    _ballCtrl.dispose();
+    _pointsValueCtrl.dispose();
     super.dispose();
   }
 
@@ -3783,18 +3916,36 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     final s = S.of(context);
     final nameRu = _nameRuCtrl.text.trim();
     final nameKk = _nameKkCtrl.text.trim();
-    final maxValue = int.tryParse(_maxCtrl.text.trim());
+    final maxValue = _parsedMax;
     final requiredMsg = s.languageCode == 'kk' ? 'Міндетті өріс' : 'Обязательное поле';
+    final ballRaw = _ballCtrl.text.trim();
+    final ballParsed = _parsedBall;
+    final pointsValueRaw = _pointsValueCtrl.text.trim();
+    final pointsValueParsed = _parsedPointsValue;
+    final hasScoring = ballRaw.isNotEmpty || pointsValueRaw.isNotEmpty;
 
     final errRu = nameRu.isEmpty ? requiredMsg : null;
     final errKk = nameKk.isEmpty ? requiredMsg : null;
-    final errMax = (maxValue == null || maxValue <= 0) ? s.customCatMaxLabel : null;
+    final errMax = (maxValue == null) ? s.customCatMaxLabel : null;
+    // Ball is optional. Empty → null. Non-empty must parse to >= 0.
+    final errBall = (hasScoring && ballParsed == null)
+        ? (s.languageCode == 'kk' ? 'Қате мән' : 'Некорректное значение')
+        : null;
+    final errPointsValue = (hasScoring && pointsValueParsed == null)
+        ? (s.languageCode == 'kk' ? 'Қате мән' : 'Некорректное значение')
+        : null;
 
-    if (errRu != null || errKk != null || errMax != null) {
+    if (errRu != null ||
+        errKk != null ||
+        errMax != null ||
+        errBall != null ||
+        errPointsValue != null) {
       setState(() {
         _errorRu = errRu;
         _errorKk = errKk;
         _errorMax = errMax;
+        _errorBall = errBall;
+        _errorPointsValue = errPointsValue;
       });
       return;
     }
@@ -3806,6 +3957,8 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
         icon: _selectedIcon,
         unit: _selectedUnit,
         maxValue: maxValue!,
+        pointsPerUnit: ballParsed,
+        pointsValue: pointsValueParsed,
       ),
     );
   }
@@ -3947,7 +4100,10 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               keyboardType: TextInputType.number,
               style: const TextStyle(color: Color(0xFFE2E8F0)),
               onChanged: (_) {
-                if (_errorMax != null) setState(() => _errorMax = null);
+                setState(() {
+                  if (_errorMax != null) _errorMax = null;
+                  // Re-render to enable/disable ball field + recompute total.
+                });
               },
               decoration: InputDecoration(
                 hintText: '10',
@@ -3967,6 +4123,132 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 errorText: _errorMax,
               ),
             ),
+            const SizedBox(height: 14),
+            Text(
+              s.customCatScoringAmountOptionalLabel,
+              style: TextStyle(
+                color: _ballEnabled ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _ballCtrl,
+              keyboardType: TextInputType.number,
+              enabled: _ballEnabled,
+              style: TextStyle(
+                color: _ballEnabled ? const Color(0xFFE2E8F0) : const Color(0xFF475569),
+              ),
+              onChanged: (_) {
+                setState(() {
+                  if (_errorBall != null) _errorBall = null;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: _ballEnabled
+                    ? (s.languageCode == 'kk' ? 'Мысалы: 50' : 'Например: 50')
+                    : (s.languageCode == 'kk' ? 'Алдымен максимум енгізіңіз' : 'Сначала введите максимум'),
+                hintStyle: const TextStyle(color: Color(0xFF475569)),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: accent),
+                ),
+                isDense: true,
+                errorText: _errorBall,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              s.customCatPointsValueLabel,
+              style: TextStyle(
+                color:
+                    _ballEnabled ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _pointsValueCtrl,
+              keyboardType: TextInputType.number,
+              enabled: _ballEnabled,
+              style: TextStyle(
+                color:
+                    _ballEnabled ? const Color(0xFFE2E8F0) : const Color(0xFF475569),
+              ),
+              onChanged: (_) {
+                setState(() {
+                  if (_errorPointsValue != null) _errorPointsValue = null;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: _ballEnabled
+                    ? (s.languageCode == 'kk' ? 'Мысалы: 1' : 'Например: 1')
+                    : (s.languageCode == 'kk'
+                        ? 'Алдымен максимум енгізіңіз'
+                        : 'Сначала введите максимум'),
+                hintStyle: const TextStyle(color: Color(0xFF475569)),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: accent),
+                ),
+                isDense: true,
+                errorText: _errorPointsValue,
+              ),
+            ),
+            if (_parsedMax != null &&
+                _parsedBall != null &&
+                _parsedPointsValue != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: accent.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      s.languageCode == 'kk' ? 'Жалпы балл: ' : 'Общий балл: ',
+                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                    ),
+                    Text(
+                      formatMetricPoints(
+                        _parsedMax! / _parsedBall! * _parsedPointsValue!,
+                      ),
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

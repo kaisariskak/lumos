@@ -44,6 +44,8 @@ class GroupMetricRepository {
     required int colorValue,
     required String unit,
     required int maxValue,
+    int? pointsPerUnit,
+    int? pointsValue,
     required int orderIndex,
   }) async {
     assert(
@@ -62,6 +64,8 @@ class GroupMetricRepository {
           'color_value': colorValue.toSigned(32),
           'unit': unit,
           'max_value': maxValue,
+          'points_per_unit': pointsPerUnit,
+          'points_value': pointsValue,
           'order_index': orderIndex,
         })
         .select()
@@ -74,6 +78,21 @@ class GroupMetricRepository {
     await _client
         .from('group_metrics')
         .update({'max_value': newMaxValue})
+        .eq('id', id);
+  }
+
+  /// Set or clear the metric scoring rule.
+  Future<void> updatePointsRule(
+    String id, {
+    required int? pointsPerUnit,
+    required int? pointsValue,
+  }) async {
+    await _client
+        .from('group_metrics')
+        .update({
+          'points_per_unit': pointsPerUnit,
+          'points_value': pointsValue,
+        })
         .eq('id', id);
   }
 
