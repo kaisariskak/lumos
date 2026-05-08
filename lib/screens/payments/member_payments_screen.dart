@@ -7,6 +7,8 @@ import '../../l10n/app_strings.dart';
 import '../../models/ibadat_member_settings.dart';
 import '../../models/ibadat_payment.dart';
 import '../../models/ibadat_profile.dart';
+import '../../payments/payment_amount_format.dart';
+import '../../payments/payment_balance.dart';
 import '../../repositories/member_settings_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../theme/accent_provider.dart';
@@ -31,13 +33,7 @@ class _ThousandSeparator extends TextInputFormatter {
 }
 
 String _fmtAmount(double v) {
-  final s = v.toStringAsFixed(0);
-  final buf = StringBuffer();
-  for (int i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) buf.write(' ');
-    buf.write(s[i]);
-  }
-  return buf.toString();
+  return formatPaymentAmount(v);
 }
 
 class MemberPaymentsScreen extends StatefulWidget {
@@ -251,6 +247,17 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
   double get _totalPaid =>
       _payments.fold(0.0, (s, p) => s + p.amount);
 
+  double get _currentMonthPaid {
+    final now = DateTime.now();
+    return _payments.where((payment) {
+      final date = payment.paymentDate;
+      return !payment.paidExtra &&
+          date != null &&
+          date.year == now.year &&
+          date.month == now.month;
+    }).fold(0.0, (sum, payment) => sum + payment.amount);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -327,7 +334,7 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                             const SizedBox(width: 4),
                             Text(
                               _fixedMonthlyAmount > 0
-                                  ? '${_fixedMonthlyAmount.toStringAsFixed(0)} ₸'
+                                  ? '${formatPaymentAmount(_fixedMonthlyAmount)} ₸'
                                   : S.of(context).fixedAmountLabel,
                               style: const TextStyle(
                                   color: Color(0xFFA5B4FC), fontSize: 11),
@@ -438,6 +445,10 @@ class _MemberPaymentsScreenState extends State<MemberPaymentsScreen> {
                             itemBuilder: (_, i) => _PaymentTile(
                               payment: _payments[i],
                               fixedMonthlyAmount: _fixedMonthlyAmount,
+                              currentMonthDebt: remainingFixedMonthlyDebt(
+                                fixedMonthlyAmount: _fixedMonthlyAmount,
+                                currentMonthPaid: _currentMonthPaid,
+                              ),
                               onEdit: () => _addOrEdit(_payments[i]),
                               onDelete: () => _delete(_payments[i]),
                             ),
@@ -507,12 +518,14 @@ class _StatItem extends StatelessWidget {
 class _PaymentTile extends StatelessWidget {
   final IbadatPayment payment;
   final double fixedMonthlyAmount;
+  final double currentMonthDebt;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _PaymentTile({
     required this.payment,
     required this.fixedMonthlyAmount,
+    required this.currentMonthDebt,
     required this.onEdit,
     required this.onDelete,
   });
@@ -529,7 +542,7 @@ class _PaymentTile extends StatelessWidget {
 
     // Текущий месяц + фиксированная сумма → автоматический расчёт
     if (isCurrentMonth && fixedMonthlyAmount > 0) {
-      return payment.amount >= fixedMonthlyAmount;
+      return currentMonthDebt <= 0;
     }
 
     // Прошлые месяцы → ручной статус финансиста
@@ -543,6 +556,11 @@ class _PaymentTile extends StatelessWidget {
         ? '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}'
         : '—';
     final isPaid = _isPaid();
+    final now = DateTime.now();
+    final isCurrentMonth =
+        date != null && date.year == now.year && date.month == now.month;
+    final showDebt =
+        !payment.paidExtra && isCurrentMonth && !isPaid && currentMonthDebt > 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -582,7 +600,7 @@ class _PaymentTile extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      '${payment.amount.toStringAsFixed(0)} ₸',
+                      '${formatPaymentAmount(payment.amount)} ₸',
                       style: const TextStyle(
                         color: Color(0xFFE2E8F0),
                         fontWeight: FontWeight.w700,
@@ -644,6 +662,17 @@ class _PaymentTile extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (showDebt) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    '${S.of(context).remainingDebtLabel}: ${formatPaymentAmount(currentMonthDebt)} \u20B8',
+                    style: const TextStyle(
+                      color: Color(0xFFFCA5A5),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

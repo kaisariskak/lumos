@@ -17,10 +17,7 @@ void main() {
       groupId: 'group-1',
       month: 4,
       year: 2026,
-      metricValues: {
-        'quran_pages': 10,
-        'book_pages': 5,
-      },
+      metricValues: {'quran_pages': 10, 'book_pages': 5},
     );
     final metrics = [
       GroupMetric.test(id: 'quran_pages', maxValue: 20),
@@ -36,9 +33,7 @@ void main() {
       groupId: 'group-1',
       month: 4,
       year: 2026,
-      metricValues: {
-        'quran_pages': 10,
-      },
+      metricValues: {'quran_pages': 10},
     );
     final metrics = [
       GroupMetric.test(id: null, maxValue: 10),
@@ -64,6 +59,33 @@ void main() {
     expect(maxPointsForMetric(metric), 2);
     expect(pointsForMetricValue(75, metric), 1.5);
     expect(pointsForMetricValue(100, metric), 2);
+  });
+
+  test('calculates total report points from scored metrics only', () {
+    final report = IbadatReport(
+      userId: 'user-1',
+      groupId: 'group-1',
+      month: 5,
+      year: 2026,
+      metricValues: {'book': 8, 'salawat': 75, 'unscored': 20},
+    );
+    final metrics = [
+      GroupMetric.test(
+        id: 'book',
+        maxValue: 10,
+        pointsPerUnit: 1,
+        pointsValue: 5,
+      ),
+      GroupMetric.test(
+        id: 'salawat',
+        maxValue: 300,
+        pointsPerUnit: 150,
+        pointsValue: 1,
+      ),
+      GroupMetric.test(id: 'unscored', maxValue: 50),
+    ];
+
+    expect(reportPoints(report, metrics), 40.5);
   });
 
   test('does not score metrics without both scoring fields', () {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../l10n/app_strings.dart';
+import '../../groups/group_member_filter.dart';
 import '../../models/group_metric.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
@@ -13,7 +14,6 @@ import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../utils/week_utils.dart';
-import '../../widgets/mini_bar_chart.dart';
 import '../../widgets/ring_indicator.dart';
 import '../detail/detail_screen.dart';
 
@@ -22,7 +22,7 @@ class _GroupSection {
   final IbadatGroup group;
   List<IbadatProfile> members = [];
   List<GroupMetric> metrics = [];
-  List<IbadatPeriod> periods = [];        // group periods (for members)
+  List<IbadatPeriod> periods = []; // group periods (for members)
   int periodIdx = 0;
   // month → userId → report
   Map<int, Map<String, IbadatReport>> trendReports = {};
@@ -46,7 +46,8 @@ class _GroupSection {
 
 class HomeScreen extends StatefulWidget {
   final IbadatProfile profile;
-  final IbadatGroup? group; // null allowed only for admin without a selected group
+  final IbadatGroup?
+  group; // null allowed only for admin without a selected group
   final VoidCallback onSwitchGroup;
 
   const HomeScreen({
@@ -147,21 +148,23 @@ class HomeScreenState extends State<HomeScreen> {
   // ── Admin: load all groups this admin owns ──────────────────────────────────
   Future<void> _loadAdminData(int version) async {
     final allGroups = await _groupRepo.getAllGroups();
-    final myGroups =
-        allGroups.where((g) => g.adminId == widget.profile.id).toList();
+    final myGroups = allGroups
+        .where((g) => g.adminId == widget.profile.id)
+        .toList();
 
     // Load sections, personal metrics, and admin's personal periods in parallel.
     // Admin periods are loaded at state level so the self-report card works
     // even before any group is created.
     final sectionsFuture = Future.wait(myGroups.map(_loadSection));
     final personalMetricsFuture = _metricRepo.getForAdmin(widget.profile.id);
-    final adminPeriodsFuture =
-        _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id);
+    final adminPeriodsFuture = _periodRepo.getPersonalPeriodsForAdmin(
+      widget.profile.id,
+    );
 
     final sections = await sectionsFuture;
     final personalMetrics = await personalMetricsFuture;
-    final adminPeriods =
-        (await adminPeriodsFuture).reversed.toList(); // oldest first
+    final adminPeriods = (await adminPeriodsFuture).reversed
+        .toList(); // oldest first
 
     final adminReport = await _fetchAdminReport(adminPeriods);
 
@@ -184,9 +187,10 @@ class HomeScreenState extends State<HomeScreen> {
       _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
     ]);
 
-    section.members = (results[0] as List<IbadatProfile>)
-        .where((m) => m.id != widget.profile.id)
-        .toList();
+    section.members = visibleGroupMembers(
+      results[0] as List<IbadatProfile>,
+      adminId: group.adminId,
+    );
     section.metrics = results[1] as List<GroupMetric>;
     final periodsRaw = results[2] as List<IbadatPeriod>;
     section.periods = periodsRaw.reversed.toList(); // oldest first
@@ -201,7 +205,8 @@ class HomeScreenState extends State<HomeScreen> {
 
     // Current period reports
     if (section.isPeriodMode) {
-      final period = section.periods[section.periodIdx.clamp(0, section.periods.length - 1)];
+      final period = section
+          .periods[section.periodIdx.clamp(0, section.periods.length - 1)];
       final reports = await _reportRepo.getGroupReportsByPeriod(
         groupId: section.group.id,
         periodId: period.id,
@@ -241,7 +246,9 @@ class HomeScreenState extends State<HomeScreen> {
     // Admin's own report — loaded separately by _loadAdminReport
   }
 
-  Future<IbadatReport?> _fetchAdminReport(List<IbadatPeriod> adminPeriods) async {
+  Future<IbadatReport?> _fetchAdminReport(
+    List<IbadatPeriod> adminPeriods,
+  ) async {
     if (adminPeriods.isNotEmpty) {
       final period =
           adminPeriods[_adminPeriodIdx.clamp(0, adminPeriods.length - 1)];
@@ -271,7 +278,8 @@ class HomeScreenState extends State<HomeScreen> {
     final isPeriodMode = _userPeriods.isNotEmpty;
     final Map<String, IbadatReport> monthly = {};
     if (isPeriodMode) {
-      final period = _userPeriods[_userPeriodIdx.clamp(0, _userPeriods.length - 1)];
+      final period =
+          _userPeriods[_userPeriodIdx.clamp(0, _userPeriods.length - 1)];
       final r = await _reportRepo.getReportByPeriod(
         userId: widget.profile.id,
         groupId: widget.group!.id,
@@ -298,7 +306,10 @@ class HomeScreenState extends State<HomeScreen> {
       _metricRepo.getForGroup(widget.group!.id),
       _periodRepo.getPeriodsForGroup(widget.group!.id, includePersonal: false),
     ]);
-    final members = results[0] as List<IbadatProfile>;
+    final members = visibleGroupMembers(
+      results[0] as List<IbadatProfile>,
+      adminId: widget.group!.adminId,
+    );
     final metrics = results[1] as List<GroupMetric>;
     final loadedPeriods = results[2] as List<IbadatPeriod>;
     final periods = loadedPeriods.reversed.toList();
@@ -368,18 +379,23 @@ class HomeScreenState extends State<HomeScreen> {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  double _calcScore(String userId, Map<String, IbadatReport> monthly,
-      List<GroupMetric> metrics) {
+  double _calcScore(
+    String userId,
+    Map<String, IbadatReport> monthly,
+    List<GroupMetric> metrics,
+  ) {
     final report = monthly[userId];
     if (report == null) return 0;
     return reportProgress(report, metrics);
   }
 
-  List<int> _trendValues(String userId,
-      Map<int, Map<String, IbadatReport>> trendReports,
-      int month,
-      int year,
-      List<GroupMetric> metrics) {
+  List<int> _trendValues(
+    String userId,
+    Map<int, Map<String, IbadatReport>> trendReports,
+    int month,
+    int year,
+    List<GroupMetric> metrics,
+  ) {
     final months = _lastFourMonths(month, year);
     final primaryMetricId = metrics.isNotEmpty ? metrics.first.id : null;
     return months.map((pair) {
@@ -405,7 +421,9 @@ class HomeScreenState extends State<HomeScreen> {
   void _nextMonth() {
     final now = DateTime.now();
     if (_viewYear > now.year ||
-        (_viewYear == now.year && _viewMonth >= now.month)) { return; }
+        (_viewYear == now.year && _viewMonth >= now.month)) {
+      return;
+    }
     setState(() {
       _viewMonth++;
       if (_viewMonth > 12) {
@@ -425,7 +443,8 @@ class HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+            )
           : RefreshIndicator(
               onRefresh: _loadData,
               color: const Color(0xFF6366F1),
@@ -453,9 +472,10 @@ class HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(s.greeting,
-                  style: const TextStyle(
-                      color: Color(0xFF64748B), fontSize: 13)),
+              Text(
+                s.greeting,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              ),
               Text(
                 '${widget.profile.nickname.split(' ').first} 👋',
                 style: const TextStyle(
@@ -497,175 +517,249 @@ class HomeScreenState extends State<HomeScreen> {
   // ── Admin view: multiple groups ──────────────────────────────────────────────
 
   List<Widget> _buildAdminContent(AppStrings s) {
-    final totalMembers = _sections.fold(0, (sum, sec) => sum + sec.members.length);
+    final totalMembers = _sections.fold(
+      0,
+      (sum, sec) => sum + sec.members.length,
+    );
 
     return [
       // Combined admin card: profile info + period nav + own report.
       // Shown even when the admin has no groups yet — they still submit
       // personal reports that need to be visible here.
-      Builder(builder: (context) {
-        final sec = _sections.isEmpty
-            ? null
-            : _sections.firstWhere(
-                (sec) => sec.group.id == widget.profile.currentGroupId,
-                orElse: () => _sections.first,
-              );
-        final periods = _adminPeriods;
-        final hasPeriods = periods.isNotEmpty;
-        final pidx = _adminPeriodIdx.clamp(0, hasPeriods ? periods.length - 1 : 0);
-        final adminReport = _adminReport;
-        final adminMetrics = _adminPersonalMetrics;
-        final score = adminReport != null
-            ? _calcScore(widget.profile.id, {widget.profile.id: adminReport}, adminMetrics)
-            : 0.0;
-        final trend = sec != null
-            ? _trendValues(
-                widget.profile.id,
-                sec.trendReports,
-                sec.viewMonth,
-                sec.viewYear,
-                adminMetrics,
-              )
-            : const <int>[];
+      Builder(
+        builder: (context) {
+          final sec = _sections.isEmpty
+              ? null
+              : _sections.firstWhere(
+                  (sec) => sec.group.id == widget.profile.currentGroupId,
+                  orElse: () => _sections.first,
+                );
+          final periods = _adminPeriods;
+          final hasPeriods = periods.isNotEmpty;
+          final pidx = _adminPeriodIdx.clamp(
+            0,
+            hasPeriods ? periods.length - 1 : 0,
+          );
+          final adminReport = _adminReport;
+          final adminMetrics = _adminPersonalMetrics;
+          final score = adminReport != null
+              ? _calcScore(widget.profile.id, {
+                  widget.profile.id: adminReport,
+                }, adminMetrics)
+              : 0.0;
+          final trend = sec != null
+              ? _trendValues(
+                  widget.profile.id,
+                  sec.trendReports,
+                  sec.viewMonth,
+                  sec.viewYear,
+                  adminMetrics,
+                )
+              : const <int>[];
 
-        return GestureDetector(
-          onTap: () {
-            final now = DateTime.now();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => DetailScreen(
-                profile: widget.profile,
-                groupId: sec?.group.id ?? '',
-                adminId: widget.profile.id,
-                report: adminReport,
-                weekLabel: WeekUtils.monthLabel(
-                  sec?.viewMonth ?? now.month,
-                  sec?.viewYear ?? now.year,
+          return GestureDetector(
+            onTap: () {
+              final now = DateTime.now();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(
+                    profile: widget.profile,
+                    groupId: sec?.group.id ?? '',
+                    adminId: widget.profile.id,
+                    report: adminReport,
+                    weekLabel: WeekUtils.monthLabel(
+                      sec?.viewMonth ?? now.month,
+                      sec?.viewYear ?? now.year,
+                    ),
+                    isWeekMode: false,
+                    monthReports: sec != null
+                        ? sec.trendReports.values
+                              .map((m) => m[widget.profile.id])
+                              .whereType<IbadatReport>()
+                              .toList()
+                        : const <IbadatReport>[],
+                    periods: periods,
+                    initialPeriodIdx: pidx,
+                  ),
                 ),
-                isWeekMode: false,
-                monthReports: sec != null
-                    ? sec.trendReports.values
-                        .map((m) => m[widget.profile.id])
-                        .whereType<IbadatReport>()
-                        .toList()
-                    : const <IbadatReport>[],
-                periods: periods,
-                initialPeriodIdx: pidx,
-              ),
-            ));
-          },
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF6366F1).withValues(alpha: 0.15),
-                  const Color(0xFF8B5CF6).withValues(alpha: 0.08),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.3)),
-            ),
-            child: Column(
-              children: [
-                // Top row: avatar + name + stats
-                Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Center(
-                        child: Text(
-                          widget.profile.nickname[0].toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(widget.profile.nickname,
-                              style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 16)),
-                          const SizedBox(height: 2),
-                          Text('👑 ${s.groupAdminLabel}',
-                              style: const TextStyle(color: Color(0xFFA5B4FC), fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('${_sections.length}',
-                            style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w800, fontSize: 18)),
-                        Text(s.groupLabel, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
-                        const SizedBox(height: 4),
-                        Text('$totalMembers',
-                            style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w800, fontSize: 18)),
-                        Text(s.memberCount, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
-                      ],
-                    ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    const Color(0xFF8B5CF6).withValues(alpha: 0.08),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
-                const SizedBox(height: 10),
-                // Period navigator
-                if (hasPeriods)
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Top row: avatar + name + stats
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        onPressed: pidx < periods.length - 1 ? () async {
-                          setState(() => _adminPeriodIdx = pidx + 1);
-                          await _reloadAdminReport();
-                        } : null,
-                        icon: Icon(Icons.chevron_left,
-                            color: pidx < periods.length - 1
-                                ? const Color(0xFFA5B4FC)
-                                : const Color(0xFF334155)),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.profile.nickname[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
                       ),
-                      Text(
-                        periods[pidx].dateRangeLabelLocalized(s.languageCode),
-                        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w600, fontSize: 13),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.profile.nickname,
+                              style: const TextStyle(
+                                color: Color(0xFFE2E8F0),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '👑 ${s.groupAdminLabel}',
+                              style: const TextStyle(
+                                color: Color(0xFFA5B4FC),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        onPressed: pidx > 0 ? () async {
-                          setState(() => _adminPeriodIdx = pidx - 1);
-                          await _reloadAdminReport();
-                        } : null,
-                        icon: Icon(Icons.chevron_right,
-                            color: pidx > 0
-                                ? const Color(0xFFA5B4FC)
-                                : const Color(0xFF334155)),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${_sections.length}',
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                          Text(
+                            s.groupLabel,
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 10,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$totalMembers',
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                          Text(
+                            s.memberCount,
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                if (hasPeriods) const SizedBox(height: 8),
-                // Report stats row
-                _AdminReportRow(
-                  report: adminReport,
-                  score: score,
-                  trend: trend,
-                  metrics: adminMetrics,
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  Divider(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    height: 1,
+                  ),
+                  const SizedBox(height: 10),
+                  // Period navigator
+                  if (hasPeriods)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          onPressed: pidx < periods.length - 1
+                              ? () async {
+                                  setState(() => _adminPeriodIdx = pidx + 1);
+                                  await _reloadAdminReport();
+                                }
+                              : null,
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: pidx < periods.length - 1
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF334155),
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                        Text(
+                          periods[pidx].dateRangeLabelLocalized(s.languageCode),
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: pidx > 0
+                              ? () async {
+                                  setState(() => _adminPeriodIdx = pidx - 1);
+                                  await _reloadAdminReport();
+                                }
+                              : null,
+                          icon: Icon(
+                            Icons.chevron_right,
+                            color: pidx > 0
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF334155),
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (hasPeriods) const SizedBox(height: 8),
+                  // Report stats row
+                  _AdminReportRow(
+                    report: adminReport,
+                    score: score,
+                    trend: trend,
+                    metrics: adminMetrics,
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
-      }),
+          );
+        },
+      ),
       const SizedBox(height: 16),
 
       if (_sections.isEmpty)
@@ -676,7 +770,13 @@ class HomeScreenState extends State<HomeScreen> {
               children: [
                 const Text('👥', style: TextStyle(fontSize: 48)),
                 const SizedBox(height: 12),
-                Text(s.noMembers, style: const TextStyle(color: Color(0xFF64748B), fontSize: 15)),
+                Text(
+                  s.noMembers,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 15,
+                  ),
+                ),
               ],
             ),
           ),
@@ -691,12 +791,18 @@ class HomeScreenState extends State<HomeScreen> {
     final allScores = section.members
         .map((m) => _calcScore(m.id, section.monthlyReports, section.metrics))
         .toList();
-    final groupScore = allScores.isEmpty ? 0.0 : allScores.fold(0.0, (s, v) => s + v) / allScores.length;
+    final groupScore = allScores.isEmpty
+        ? 0.0
+        : allScores.fold(0.0, (s, v) => s + v) / allScores.length;
 
     final sorted = List<IbadatProfile>.from(section.members);
-    sorted.sort((a, b) =>
-        _calcScore(b.id, section.monthlyReports, section.metrics)
-            .compareTo(_calcScore(a.id, section.monthlyReports, section.metrics)));
+    sorted.sort(
+      (a, b) => _calcScore(
+        b.id,
+        section.monthlyReports,
+        section.metrics,
+      ).compareTo(_calcScore(a.id, section.monthlyReports, section.metrics)),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,7 +821,8 @@ class HomeScreenState extends State<HomeScreen> {
               ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+                color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+              ),
             ),
             child: Row(
               children: [
@@ -736,7 +843,9 @@ class HomeScreenState extends State<HomeScreen> {
                       Text(
                         '$totalMembers ${s.memberCount}  ·  ${(groupScore * 100).round()}%',
                         style: const TextStyle(
-                            color: Color(0xFF94A3B8), fontSize: 11),
+                          color: Color(0xFF94A3B8),
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -744,18 +853,26 @@ class HomeScreenState extends State<HomeScreen> {
                 // Period label
                 if (section.isPeriodMode)
                   Text(
-                    section.periods[section.periodIdx
-                            .clamp(0, section.periods.length - 1)]
+                    section
+                        .periods[section.periodIdx.clamp(
+                          0,
+                          section.periods.length - 1,
+                        )]
                         .dateRangeLabelLocalized(s.languageCode),
                     style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 11),
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
                   ),
                 const SizedBox(width: 8),
                 AnimatedRotation(
                   turns: section.expanded ? 0.5 : 0,
                   duration: const Duration(milliseconds: 200),
-                  child: const Icon(Icons.keyboard_arrow_down,
-                      color: Color(0xFF64748B), size: 20),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
                 ),
               ],
             ),
@@ -773,7 +890,9 @@ class HomeScreenState extends State<HomeScreen> {
         ],
 
         // Period navigator
-        if (section.expanded && section.isPeriodMode && section.periods.length > 1)
+        if (section.expanded &&
+            section.isPeriodMode &&
+            section.periods.length > 1)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: _buildPeriodNav(section, s),
@@ -786,9 +905,13 @@ class HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text(s.noMembers,
-                    style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 13)),
+                child: Text(
+                  s.noMembers,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 13,
+                  ),
+                ),
               ),
             )
           else
@@ -796,7 +919,10 @@ class HomeScreenState extends State<HomeScreen> {
               final idx = entry.key;
               final member = entry.value;
               final score = _calcScore(
-                  member.id, section.monthlyReports, section.metrics);
+                member.id,
+                section.monthlyReports,
+                section.metrics,
+              );
               final trend = _trendValues(
                 member.id,
                 section.trendReports,
@@ -808,29 +934,33 @@ class HomeScreenState extends State<HomeScreen> {
               final medal = idx == 0
                   ? '🥇'
                   : idx == 1
-                      ? '🥈'
-                      : idx == 2
-                          ? '🥉'
-                          : null;
+                  ? '🥈'
+                  : idx == 2
+                  ? '🥉'
+                  : null;
 
               return GestureDetector(
                 onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => DetailScreen(
-                      profile: member,
-                      groupId: section.group.id,
-                      report: section.monthlyReports[member.id],
-                      weekLabel: WeekUtils.monthLabel(
-                          section.viewMonth, section.viewYear),
-                      isWeekMode: false,
-                      monthReports: section.trendReports.values
-                          .map((m) => m[member.id])
-                          .whereType<IbadatReport>()
-                          .toList(),
-                      periods: section.periods,
-                      initialPeriodIdx: section.periodIdx,
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => DetailScreen(
+                        profile: member,
+                        groupId: section.group.id,
+                        report: section.monthlyReports[member.id],
+                        weekLabel: WeekUtils.monthLabel(
+                          section.viewMonth,
+                          section.viewYear,
+                        ),
+                        isWeekMode: false,
+                        monthReports: section.trendReports.values
+                            .map((m) => m[member.id])
+                            .whereType<IbadatReport>()
+                            .toList(),
+                        periods: section.periods,
+                        initialPeriodIdx: section.periodIdx,
+                      ),
                     ),
-                  ));
+                  );
                 },
                 child: _MemberTile(
                   member: member,
@@ -870,24 +1000,26 @@ class HomeScreenState extends State<HomeScreen> {
                     if (mounted) setState(() {});
                   }
                 : null,
-            icon: Icon(Icons.chevron_left,
-                color: idx > 0
-                    ? const Color(0xFFA5B4FC)
-                    : const Color(0xFF334155)),
+            icon: Icon(
+              Icons.chevron_left,
+              color: idx > 0
+                  ? const Color(0xFFA5B4FC)
+                  : const Color(0xFF334155),
+            ),
           ),
           Column(
             children: [
               Text(
                 section.periods[idx].dateRangeLabelLocalized(s.languageCode),
                 style: const TextStyle(
-                    color: Color(0xFFE2E8F0),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14),
+                  color: Color(0xFFE2E8F0),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
               Text(
                 section.periods[idx].label,
-                style:
-                    const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
               ),
             ],
           ),
@@ -899,10 +1031,12 @@ class HomeScreenState extends State<HomeScreen> {
                     if (mounted) setState(() {});
                   }
                 : null,
-            icon: Icon(Icons.chevron_right,
-                color: idx < section.periods.length - 1
-                    ? const Color(0xFFA5B4FC)
-                    : const Color(0xFF334155)),
+            icon: Icon(
+              Icons.chevron_right,
+              color: idx < section.periods.length - 1
+                  ? const Color(0xFFA5B4FC)
+                  : const Color(0xFF334155),
+            ),
           ),
         ],
       ),
@@ -934,7 +1068,8 @@ class HomeScreenState extends State<HomeScreen> {
             color: const Color(0xFF6366F1).withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(40),
             border: Border.all(
-                color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -966,8 +1101,7 @@ class HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.02),
           borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: Colors.white.withValues(alpha: 0.04)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
         ),
         child: _userPeriods.isNotEmpty
             ? Row(
@@ -980,28 +1114,37 @@ class HomeScreenState extends State<HomeScreen> {
                             await _loadUserReport();
                           }
                         : null,
-                    icon: Icon(Icons.chevron_left,
-                        color: _userPeriodIdx > 0
-                            ? const Color(0xFFA5B4FC)
-                            : const Color(0xFF334155)),
+                    icon: Icon(
+                      Icons.chevron_left,
+                      color: _userPeriodIdx > 0
+                          ? const Color(0xFFA5B4FC)
+                          : const Color(0xFF334155),
+                    ),
                   ),
                   Column(
                     children: [
                       Text(
-                        _userPeriods[_userPeriodIdx
-                                .clamp(0, _userPeriods.length - 1)]
+                        _userPeriods[_userPeriodIdx.clamp(
+                              0,
+                              _userPeriods.length - 1,
+                            )]
                             .dateRangeLabelLocalized(s.languageCode),
                         style: const TextStyle(
-                            color: Color(0xFFE2E8F0),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14),
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
                       ),
                       Text(
-                        _userPeriods[_userPeriodIdx
-                                .clamp(0, _userPeriods.length - 1)]
+                        _userPeriods[_userPeriodIdx.clamp(
+                              0,
+                              _userPeriods.length - 1,
+                            )]
                             .label,
                         style: const TextStyle(
-                            color: Color(0xFF64748B), fontSize: 11),
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -1012,11 +1155,12 @@ class HomeScreenState extends State<HomeScreen> {
                             await _loadUserReport();
                           }
                         : null,
-                    icon: Icon(Icons.chevron_right,
-                        color:
-                            _userPeriodIdx < _userPeriods.length - 1
-                                ? const Color(0xFFA5B4FC)
-                                : const Color(0xFF334155)),
+                    icon: Icon(
+                      Icons.chevron_right,
+                      color: _userPeriodIdx < _userPeriods.length - 1
+                          ? const Color(0xFFA5B4FC)
+                          : const Color(0xFF334155),
+                    ),
                   ),
                 ],
               )
@@ -1025,31 +1169,36 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   IconButton(
                     onPressed: _prevMonth,
-                    icon: const Icon(Icons.chevron_left,
-                        color: Color(0xFFA5B4FC)),
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      color: Color(0xFFA5B4FC),
+                    ),
                   ),
                   Text(
                     WeekUtils.monthLabel(_viewMonth, _viewYear),
                     style: const TextStyle(
-                        color: Color(0xFFE2E8F0),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14),
+                      color: Color(0xFFE2E8F0),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
                   ),
                   IconButton(
                     onPressed: () {
                       final now = DateTime.now();
                       if (_viewYear < now.year ||
-                          (_viewYear == now.year &&
-                              _viewMonth < now.month)) {
+                          (_viewYear == now.year && _viewMonth < now.month)) {
                         _nextMonth();
                       }
                     },
-                    icon: Icon(Icons.chevron_right,
-                        color: (_viewYear < DateTime.now().year ||
-                                (_viewYear == DateTime.now().year &&
-                                    _viewMonth < DateTime.now().month))
-                            ? const Color(0xFFA5B4FC)
-                            : const Color(0xFF334155)),
+                    icon: Icon(
+                      Icons.chevron_right,
+                      color:
+                          (_viewYear < DateTime.now().year ||
+                              (_viewYear == DateTime.now().year &&
+                                  _viewMonth < DateTime.now().month))
+                          ? const Color(0xFFA5B4FC)
+                          : const Color(0xFF334155),
+                    ),
                   ),
                 ],
               ),
@@ -1061,30 +1210,32 @@ class HomeScreenState extends State<HomeScreen> {
         Center(
           child: Padding(
             padding: const EdgeInsets.all(40),
-            child: Text(s.noMembers,
-                style: const TextStyle(
-                    color: Color(0xFF64748B), fontSize: 15)),
+            child: Text(
+              s.noMembers,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 15),
+            ),
           ),
         )
       else
         GestureDetector(
           onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => DetailScreen(
-                profile: me.first,
-                groupId: widget.group!.id,
-                report: _userMonthlyReports[me.first.id],
-                weekLabel:
-                    WeekUtils.monthLabel(_viewMonth, _viewYear),
-                isWeekMode: false,
-                monthReports: _userTrendReports.values
-                    .map((m) => m[me.first.id])
-                    .whereType<IbadatReport>()
-                    .toList(),
-                periods: _userPeriods,
-                initialPeriodIdx: _userPeriodIdx,
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => DetailScreen(
+                  profile: me.first,
+                  groupId: widget.group!.id,
+                  report: _userMonthlyReports[me.first.id],
+                  weekLabel: WeekUtils.monthLabel(_viewMonth, _viewYear),
+                  isWeekMode: false,
+                  monthReports: _userTrendReports.values
+                      .map((m) => m[me.first.id])
+                      .whereType<IbadatReport>()
+                      .toList(),
+                  periods: _userPeriods,
+                  initialPeriodIdx: _userPeriodIdx,
+                ),
               ),
-            ));
+            );
           },
           child: _MemberTile(
             member: me.first,
@@ -1148,10 +1299,12 @@ class _MemberTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: rank == 0
-            ? LinearGradient(colors: [
-                const Color(0xFFFBBF24).withValues(alpha: 0.08),
-                const Color(0xFFF59E0B).withValues(alpha: 0.04),
-              ])
+            ? LinearGradient(
+                colors: [
+                  const Color(0xFFFBBF24).withValues(alpha: 0.08),
+                  const Color(0xFFF59E0B).withValues(alpha: 0.04),
+                ],
+              )
             : null,
         color: rank == 0 ? null : Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16),
@@ -1159,8 +1312,8 @@ class _MemberTile extends StatelessWidget {
           color: isMe
               ? const Color(0xFF6366F1).withValues(alpha: 0.3)
               : rank == 0
-                  ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
-                  : Colors.white.withValues(alpha: 0.06),
+              ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: Row(
@@ -1187,10 +1340,12 @@ class _MemberTile extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                catColor.withValues(alpha: 0.4),
-                catColor.withValues(alpha: 0.2),
-              ]),
+              gradient: LinearGradient(
+                colors: [
+                  catColor.withValues(alpha: 0.4),
+                  catColor.withValues(alpha: 0.2),
+                ],
+              ),
               borderRadius: BorderRadius.circular(21),
             ),
             child: Stack(
@@ -1211,13 +1366,14 @@ class _MemberTile extends StatelessWidget {
                     right: -2,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 3, vertical: 1),
+                        horizontal: 3,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF59E0B),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child:
-                          const Text('👑', style: TextStyle(fontSize: 8)),
+                      child: const Text('👑', style: TextStyle(fontSize: 8)),
                     ),
                   ),
               ],
@@ -1244,10 +1400,11 @@ class _MemberTile extends StatelessWidget {
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF6366F1)
-                              .withValues(alpha: 0.2),
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -1268,12 +1425,17 @@ class _MemberTile extends StatelessWidget {
             ),
           ),
 
-          // Ring + trend
+          // Progress ring
           Column(
             children: [
               RingIndicator(value: score, size: 46),
-              const SizedBox(height: 3),
-              MiniBarChart(values: trend, color: const Color(0xFF6366F1)),
+              if (report != null && _hasPointMetrics(metrics)) ...[
+                const SizedBox(height: 4),
+                _TotalPointsChip(
+                  points: reportPoints(report!, metrics),
+                  color: catColor,
+                ),
+              ],
             ],
           ),
         ],
@@ -1321,8 +1483,8 @@ class _GroupProgressBar extends StatelessWidget {
     final barColor = pct >= 70
         ? const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF34D399)])
         : pct >= 40
-            ? const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)])
-            : const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF818CF8)]);
+        ? const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)])
+        : const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF818CF8)]);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1335,7 +1497,9 @@ class _GroupProgressBar extends StatelessWidget {
           ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.15)),
+        border: Border.all(
+          color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+        ),
       ),
       child: Column(
         children: [
@@ -1357,7 +1521,10 @@ class _GroupProgressBar extends StatelessWidget {
                     ),
                     Text(
                       '$groupName · $memberCount ${s.memberCount}',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -1370,8 +1537,8 @@ class _GroupProgressBar extends StatelessWidget {
                   color: pct >= 70
                       ? const Color(0xFF10B981)
                       : pct >= 40
-                          ? const Color(0xFFF59E0B)
-                          : const Color(0xFF94A3B8),
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF94A3B8),
                 ),
               ),
             ],
@@ -1437,7 +1604,9 @@ class _CategoryChips extends StatelessWidget {
       spacing: 4,
       runSpacing: 2,
       children: metrics.map((metric) {
-        final val = metric.id == null ? 0 : report?.valueForMetric(metric.id!) ?? 0;
+        final val = metric.id == null
+            ? 0
+            : report?.valueForMetric(metric.id!) ?? 0;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
           decoration: BoxDecoration(
@@ -1454,6 +1623,38 @@ class _CategoryChips extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+bool _hasPointMetrics(Iterable<GroupMetric> metrics) {
+  return metrics.any((metric) => maxPointsForMetric(metric) != null);
+}
+
+class _TotalPointsChip extends StatelessWidget {
+  final double points;
+  final Color color;
+
+  const _TotalPointsChip({required this.points, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        '${formatMetricPoints(points)} балл',
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          height: 1.0,
+        ),
+      ),
     );
   }
 }
@@ -1491,41 +1692,60 @@ class _AdminReportRow extends StatelessWidget {
         ),
       );
     }
+    final totalPoints = reportPoints(report!, metrics);
     return Row(
       children: [
         Expanded(
           child: Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: metrics.map((metric) {
-              final val = metric.id == null ? 0 : report!.valueForMetric(metric.id!);
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: metric.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(metric.icon, style: const TextStyle(fontSize: 12)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$val',
-                      style: TextStyle(
-                        color: metric.color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+            children: [
+              ...metrics.map((metric) {
+                final val = metric.id == null
+                    ? 0
+                    : report!.valueForMetric(metric.id!);
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: metric.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(metric.icon, style: const TextStyle(fontSize: 12)),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$val',
+                        style: TextStyle(
+                          color: metric.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
+                    ],
+                  ),
+                );
+              }),
+            ],
           ),
         ),
         const SizedBox(width: 12),
-        RingIndicator(value: score, size: 52, strokeWidth: 5),
+        Column(
+          children: [
+            RingIndicator(value: score, size: 52, strokeWidth: 5),
+            if (_hasPointMetrics(metrics)) ...[
+              const SizedBox(height: 5),
+              _TotalPointsChip(
+                points: totalPoints,
+                color: const Color(0xFFA5B4FC),
+              ),
+            ],
+          ],
+        ),
       ],
     );
   }

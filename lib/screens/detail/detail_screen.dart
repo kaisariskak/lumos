@@ -13,6 +13,31 @@ import '../../repositories/ibadat_report_repository.dart';
 import '../../reporting/report_progress.dart';
 import '../../widgets/ring_indicator.dart';
 
+class DetailMetricSources {
+  final bool loadGroupMetrics;
+  final String? adminId;
+
+  const DetailMetricSources({
+    required this.loadGroupMetrics,
+    required this.adminId,
+  });
+}
+
+@visibleForTesting
+DetailMetricSources detailMetricSources({
+  required String groupId,
+  String? adminId,
+}) {
+  if (adminId != null) {
+    return DetailMetricSources(loadGroupMetrics: false, adminId: adminId);
+  }
+
+  return DetailMetricSources(
+    loadGroupMetrics: groupId.isNotEmpty,
+    adminId: null,
+  );
+}
+
 class DetailScreen extends StatefulWidget {
   final IbadatProfile profile;
   final String groupId;
@@ -56,28 +81,32 @@ class _DetailScreenState extends State<DetailScreen> {
   List<GroupMetric> get _visibleMetrics =>
       _metrics.where((metric) => metric.id != null).toList();
 
-  IbadatPeriod? get _currentPeriod =>
-      _isPeriodMode ? widget.periods[_periodIdx.clamp(0, widget.periods.length - 1)] : null;
+  IbadatPeriod? get _currentPeriod => _isPeriodMode
+      ? widget.periods[_periodIdx.clamp(0, widget.periods.length - 1)]
+      : null;
 
   @override
   void initState() {
     super.initState();
     _repo = IbadatReportRepository(Supabase.instance.client);
     _metricRepo = GroupMetricRepository(Supabase.instance.client);
-    _periodIdx = widget.initialPeriodIdx.clamp(0, widget.periods.isEmpty ? 0 : widget.periods.length - 1);
+    _periodIdx = widget.initialPeriodIdx.clamp(
+      0,
+      widget.periods.isEmpty ? 0 : widget.periods.length - 1,
+    );
     _report = widget.report;
     _loadMetrics();
   }
 
   Future<void> _loadMetrics() async {
     try {
-      // Always load group metrics for the current group context.
-      // Additionally, when viewing an admin's own card (adminId != null),
-      // also load that admin's personal metrics. Merge with id-dedup so a
-      // metric that somehow appears in both scopes is shown once.
+      final sources = detailMetricSources(
+        groupId: widget.groupId,
+        adminId: widget.adminId,
+      );
       final results = await Future.wait([
-        if (widget.groupId.isNotEmpty) _metricRepo.getForGroup(widget.groupId),
-        if (widget.adminId != null) _metricRepo.getForAdmin(widget.adminId!),
+        if (sources.loadGroupMetrics) _metricRepo.getForGroup(widget.groupId),
+        if (sources.adminId != null) _metricRepo.getForAdmin(sources.adminId!),
       ]);
       final seen = <String>{};
       final merged = <GroupMetric>[];
@@ -191,7 +220,11 @@ class _DetailScreenState extends State<DetailScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [const Color(0xFF0F172A), accent.gradientMid, const Color(0xFF0F172A)],
+            colors: [
+              const Color(0xFF0F172A),
+              accent.gradientMid,
+              const Color(0xFF0F172A),
+            ],
             stops: const [0.0, 0.5, 1.0],
           ),
         ),
@@ -206,17 +239,32 @@ class _DetailScreenState extends State<DetailScreen> {
                   child: GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.chevron_left, color: Color(0xFF94A3B8), size: 20),
-                          Text(S.of(context).back, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
+                          const Icon(
+                            Icons.chevron_left,
+                            color: Color(0xFF94A3B8),
+                            size: 20,
+                          ),
+                          Text(
+                            S.of(context).back,
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 14,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -226,7 +274,9 @@ class _DetailScreenState extends State<DetailScreen> {
 
               Expanded(
                 child: _isLoading
-                    ? Center(child: CircularProgressIndicator(color: accent.accent))
+                    ? Center(
+                        child: CircularProgressIndicator(color: accent.accent),
+                      )
                     : SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
                         child: Column(
@@ -244,7 +294,9 @@ class _DetailScreenState extends State<DetailScreen> {
                                 borderRadius: BorderRadius.circular(36),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: accent.accentDark.withValues(alpha: 0.4),
+                                    color: accent.accentDark.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     blurRadius: 32,
                                     offset: const Offset(0, 8),
                                   ),
@@ -253,14 +305,22 @@ class _DetailScreenState extends State<DetailScreen> {
                               child: Center(
                                 child: Text(
                                   widget.profile.nickname[0].toUpperCase(),
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 28),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 28,
+                                  ),
                                 ),
                               ),
                             ),
                             const SizedBox(height: 12),
                             Text(
                               widget.profile.nickname,
-                              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 22, fontWeight: FontWeight.w800),
+                              style: const TextStyle(
+                                color: Color(0xFFE2E8F0),
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                             const SizedBox(height: 10),
 
@@ -277,20 +337,32 @@ class _DetailScreenState extends State<DetailScreen> {
                               )
                             else
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
                                   color: accent.accent.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: accent.accent.withValues(alpha: 0.2)),
+                                  border: Border.all(
+                                    color: accent.accent.withValues(alpha: 0.2),
+                                  ),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(widget.isWeekMode ? '📅' : '📆', style: const TextStyle(fontSize: 12)),
+                                    Text(
+                                      widget.isWeekMode ? '📅' : '📆',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                     const SizedBox(width: 6),
                                     Text(
                                       label,
-                                      style: TextStyle(color: accent.accentLight, fontSize: 13, fontWeight: FontWeight.w600),
+                                      style: TextStyle(
+                                        color: accent.accentLight,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -306,7 +378,12 @@ class _DetailScreenState extends State<DetailScreen> {
                                 final totalPoints = scored.fold<double>(
                                   0,
                                   (sum, m) =>
-                                      sum + (pointsForMetricValue(_getValue(m.id!), m) ?? 0),
+                                      sum +
+                                      (pointsForMetricValue(
+                                            _getValue(m.id!),
+                                            m,
+                                          ) ??
+                                          0),
                                 );
                                 return Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -321,14 +398,19 @@ class _DetailScreenState extends State<DetailScreen> {
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          color: accent.accent.withValues(alpha: 0.10),
+                                          color: accent.accent.withValues(
+                                            alpha: 0.10,
+                                          ),
                                           border: Border.all(
-                                            color: accent.accent.withValues(alpha: 0.35),
+                                            color: accent.accent.withValues(
+                                              alpha: 0.35,
+                                            ),
                                             width: 2,
                                           ),
                                         ),
                                         child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Text(
@@ -345,7 +427,8 @@ class _DetailScreenState extends State<DetailScreen> {
                                             Text(
                                               'балл',
                                               style: TextStyle(
-                                                color: accent.accentLight.withValues(alpha: 0.85),
+                                                color: accent.accentLight
+                                                    .withValues(alpha: 0.85),
                                                 fontSize: 9,
                                                 fontWeight: FontWeight.w600,
                                                 height: 1.0,
@@ -364,12 +447,16 @@ class _DetailScreenState extends State<DetailScreen> {
                             // Metric grid
                             if (_visibleMetrics.isEmpty)
                               Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 24,
+                                ),
                                 child: Center(
                                   child: Text(
                                     'Показатели ещё не настроены',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.35),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.35,
+                                      ),
                                       fontSize: 13,
                                     ),
                                   ),
@@ -382,48 +469,82 @@ class _DetailScreenState extends State<DetailScreen> {
                                 itemCount: _visibleMetrics.length,
                                 gridDelegate:
                                     const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                  mainAxisExtent: 150,
-                                ),
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 8,
+                                      mainAxisSpacing: 8,
+                                      mainAxisExtent: 150,
+                                    ),
                                 itemBuilder: (context, index) {
                                   final metric = _visibleMetrics[index];
                                   final val = _getValue(metric.id!);
-                                  final pct = metricProgress(val, metric.maxValue);
-                                  final earnedPoints = pointsForMetricValue(val, metric);
+                                  final pct = metricProgress(
+                                    val,
+                                    metric.maxValue,
+                                  );
+                                  final earnedPoints = pointsForMetricValue(
+                                    val,
+                                    metric,
+                                  );
 
                                   return Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.03),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.03,
+                                      ),
                                       borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.06,
+                                        ),
+                                      ),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Text(metric.icon, style: const TextStyle(fontSize: 18)),
+                                            Text(
+                                              metric.icon,
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                              ),
+                                            ),
                                             Column(
-                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
                                               children: [
-                                                CategoryRing(value: pct, color: metric.color),
+                                                CategoryRing(
+                                                  value: pct,
+                                                  color: metric.color,
+                                                ),
                                                 if (earnedPoints != null) ...[
                                                   const SizedBox(height: 4),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 2,
-                                                    ),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 2,
+                                                        ),
                                                     decoration: BoxDecoration(
-                                                      color: metric.color.withValues(alpha: 0.18),
-                                                      borderRadius: BorderRadius.circular(10),
+                                                      color: metric.color
+                                                          .withValues(
+                                                            alpha: 0.18,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
                                                       border: Border.all(
-                                                        color: metric.color.withValues(alpha: 0.4),
+                                                        color: metric.color
+                                                            .withValues(
+                                                              alpha: 0.4,
+                                                            ),
                                                       ),
                                                     ),
                                                     child: Text(
@@ -431,7 +552,8 @@ class _DetailScreenState extends State<DetailScreen> {
                                                       style: TextStyle(
                                                         color: metric.color,
                                                         fontSize: 10,
-                                                        fontWeight: FontWeight.w800,
+                                                        fontWeight:
+                                                            FontWeight.w800,
                                                         height: 1.0,
                                                       ),
                                                     ),
@@ -444,25 +566,38 @@ class _DetailScreenState extends State<DetailScreen> {
                                         const Spacer(),
                                         Text(
                                           '$val',
-                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: metric.color, height: 1.0),
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w800,
+                                            color: metric.color,
+                                            height: 1.0,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           '${metric.localizedName(S.of(context).languageCode)} · ${S.of(context).unitLabel(metric.unit)}',
-                                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.w500),
+                                          style: const TextStyle(
+                                            color: Color(0xFF94A3B8),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                           maxLines: 1,
                                         ),
                                         const SizedBox(height: 6),
                                         ClipRRect(
-                                          borderRadius: BorderRadius.circular(2),
+                                          borderRadius: BorderRadius.circular(
+                                            2,
+                                          ),
                                           child: Stack(
                                             children: [
                                               Container(
                                                 height: 3,
                                                 decoration: BoxDecoration(
-                                                  color: Colors.white.withValues(alpha: 0.06),
-                                                  borderRadius: BorderRadius.circular(2),
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.06),
+                                                  borderRadius:
+                                                      BorderRadius.circular(2),
                                                 ),
                                               ),
                                               FractionallySizedBox(
@@ -471,7 +606,10 @@ class _DetailScreenState extends State<DetailScreen> {
                                                   height: 3,
                                                   decoration: BoxDecoration(
                                                     color: metric.color,
-                                                    borderRadius: BorderRadius.circular(2),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          2,
+                                                        ),
                                                   ),
                                                 ),
                                               ),
@@ -526,7 +664,12 @@ class _PeriodNav extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _NavBtn(icon: Icons.chevron_left, enabled: canPrev, color: accentColor, onTap: onPrev),
+          _NavBtn(
+            icon: Icons.chevron_left,
+            enabled: canPrev,
+            color: accentColor,
+            onTap: onPrev,
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
@@ -536,12 +679,21 @@ class _PeriodNav extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   label,
-                  style: TextStyle(color: accentLight, fontSize: 13, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: accentLight,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           ),
-          _NavBtn(icon: Icons.chevron_right, enabled: canNext, color: accentColor, onTap: onNext),
+          _NavBtn(
+            icon: Icons.chevron_right,
+            enabled: canNext,
+            color: accentColor,
+            onTap: onNext,
+          ),
         ],
       ),
     );
@@ -554,7 +706,12 @@ class _NavBtn extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _NavBtn({required this.icon, required this.enabled, required this.color, required this.onTap});
+  const _NavBtn({
+    required this.icon,
+    required this.enabled,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -567,7 +724,11 @@ class _NavBtn extends StatelessWidget {
           color: enabled ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: enabled ? color : const Color(0xFF334155), size: 20),
+        child: Icon(
+          icon,
+          color: enabled ? color : const Color(0xFF334155),
+          size: 20,
+        ),
       ),
     );
   }

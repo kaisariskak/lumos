@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/app_config.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/google_auth_error_action.dart';
+import '../../services/google_sign_in_service.dart';
 
 class IbadatAuthorization extends StatefulWidget {
   const IbadatAuthorization({super.key});
@@ -18,6 +20,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
+      await GoogleSignInService.ensureInitialized();
       final googleUser = await GoogleSignIn.instance.authenticate();
       final auth = googleUser.authentication;
       final idToken = auth.idToken;
@@ -34,15 +37,24 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
       }
       if (!mounted) return;
       final s = S.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${s.error}: ${e.description ?? e.code.name}'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      switch (googleAuthErrorActionFor(e)) {
+        case GoogleAuthErrorAction.cancel:
+          return;
+        case GoogleAuthErrorAction.browserOAuthFallback:
+          await _signInWithGoogleOAuth();
+          return;
+        case GoogleAuthErrorAction.showError:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${s.error}: ${e.description ?? e.code.name}'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+      }
     } on AuthException catch (e) {
       if (!mounted) return;
-      final isNotRegistered = e.message.contains('Database error saving new user') ||
+      final isNotRegistered =
+          e.message.contains('Database error saving new user') ||
           e.message.contains('unexpected_failure') ||
           e.statusCode == '422';
       final s = S.of(context);
@@ -56,7 +68,8 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString();
-      final isNotRegistered = msg.contains('Database error saving new user') ||
+      final isNotRegistered =
+          msg.contains('Database error saving new user') ||
           msg.contains('unexpected_failure');
       final s = S.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -69,6 +82,14 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _signInWithGoogleOAuth() {
+    return Supabase.instance.client.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: AppConfig.supabaseOAuthRedirectUrl,
+      queryParams: const {'prompt': 'select_account'},
+    );
   }
 
   @override
@@ -183,7 +204,10 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
                   const SizedBox(height: 24),
                   Text(
                     s.noPassword,
-                    style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+                    style: const TextStyle(
+                      color: Color(0xFF475569),
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               ),
@@ -222,7 +246,9 @@ class _GooglePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final s = size.width;
     // Simplified Google 'G' logo approximation using colored arcs
-    final paint = Paint()..style = PaintingStyle.stroke..strokeWidth = s * 0.13;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s * 0.13;
 
     // Red arc (top)
     paint.color = const Color(0xFFEA4335);

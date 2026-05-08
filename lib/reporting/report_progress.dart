@@ -12,7 +12,9 @@ double reportProgress(IbadatReport report, Iterable<GroupMetric> metrics) {
 
   final total = list.fold<double>(
     0,
-    (sum, metric) => sum + metricProgress(report.valueForMetric(metric.id!), metric.maxValue),
+    (sum, metric) =>
+        sum +
+        metricProgress(report.valueForMetric(metric.id!), metric.maxValue),
   );
   return total / list.length;
 }
@@ -32,20 +34,31 @@ double? pointsForMetricValue(int value, GroupMetric metric) {
 double? maxPointsForMetric(GroupMetric metric) =>
     pointsForMetricValue(metric.maxValue, metric);
 
+double reportPoints(IbadatReport report, Iterable<GroupMetric> metrics) {
+  return metrics.fold<double>(0, (sum, metric) {
+    final metricId = metric.id;
+    if (metricId == null) return sum;
+    return sum +
+        (pointsForMetricValue(report.valueForMetric(metricId), metric) ?? 0);
+  });
+}
+
 String formatMetricPoints(double value) {
   if (value == value.roundToDouble()) {
     return value.toInt().toString();
   }
-  return value.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(
-        RegExp(r'\.$'),
-        '',
-      );
+  return value
+      .toStringAsFixed(2)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
 }
 
 List<int> quickValuesFor(GroupMetric metric) {
-  return [0.25, 0.5, 0.75, 1.0]
-      .map((fraction) => (metric.maxValue * fraction).round())
-      .toSet()
-      .toList()
+  return [
+      0.25,
+      0.5,
+      0.75,
+      1.0,
+    ].map((fraction) => (metric.maxValue * fraction).round()).toSet().toList()
     ..sort();
 }

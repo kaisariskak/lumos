@@ -6,6 +6,7 @@ import '../models/ibadat_group.dart';
 import '../theme/accent_provider.dart';
 import '../models/ibadat_profile.dart';
 import '../repositories/ibadat_group_repository.dart';
+import '../services/auth_logout_service.dart';
 import 'admin/admin_screen.dart';
 import 'home/home_screen.dart';
 import 'payments/payments_screen.dart';
@@ -34,6 +35,7 @@ class _MainScaffoldState extends State<MainScaffold>
   int _tabIndex = 0;
   IbadatGroup? _group;
   bool _isLoading = true;
+  int _paymentsReloadToken = 0;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _reportKey = GlobalKey<ReportEditorScreenState>();
 
@@ -89,7 +91,7 @@ class _MainScaffoldState extends State<MainScaffold>
   }
 
   Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
+    await AuthLogoutService.signOut();
   }
 
   @override
@@ -154,6 +156,7 @@ class _MainScaffoldState extends State<MainScaffold>
                     PaymentsScreen(
                       profile: widget.profile,
                       group: group,
+                      reloadToken: _paymentsReloadToken,
                     ),
                   if (isAdmin)
                     AdminScreen(
@@ -186,7 +189,12 @@ class _MainScaffoldState extends State<MainScaffold>
               showPayments: showPayments,
               groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
               onTap: (i) {
-                setState(() => _tabIndex = i);
+                setState(() {
+                  _tabIndex = i;
+                  if (showPayments && i == 2) {
+                    _paymentsReloadToken++;
+                  }
+                });
                 if (i == 0) {
                   _homeKey.currentState?.reload();
                 } else if (i == 1) {

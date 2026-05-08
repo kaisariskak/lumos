@@ -93,7 +93,20 @@ abstract class IbadatReportDataStore {
     throw UnimplementedError();
   }
 
-  Future<void> replaceMetricValues(String reportId, Map<String, int> metricValues) {
+  Future<Map<String, Map<String, int>>> getMetricValuesForReports(
+    List<String> reportIds,
+  ) async {
+    final valuesByReportId = <String, Map<String, int>>{};
+    for (final reportId in reportIds) {
+      valuesByReportId[reportId] = await getMetricValues(reportId);
+    }
+    return valuesByReportId;
+  }
+
+  Future<void> replaceMetricValues(
+    String reportId,
+    Map<String, int> metricValues,
+  ) {
     throw UnimplementedError();
   }
 }
@@ -102,9 +115,10 @@ class IbadatReportRepository {
   final IbadatReportDataStore _store;
 
   IbadatReportRepository(SupabaseClient client)
-      : _store = _SupabaseIbadatReportDataStore(client);
+    : _store = _SupabaseIbadatReportDataStore(client);
 
-  IbadatReportRepository.withStore(IbadatReportDataStore store) : _store = store;
+  IbadatReportRepository.withStore(IbadatReportDataStore store)
+    : _store = store;
 
   Future<IbadatReport?> getReport({
     required String userId,
@@ -186,7 +200,10 @@ class IbadatReportRepository {
         );
       }
       if (existing != null) {
-        data = await _store.updateReportHeader(existing['id'] as String, payload);
+        data = await _store.updateReportHeader(
+          existing['id'] as String,
+          payload,
+        );
       } else {
         data = await _store.insertReportHeader(payload);
       }
@@ -267,19 +284,38 @@ class IbadatReportRepository {
     }
 
     return report.copyWith(
-      metricValues: {
-        ...report.metricValues,
-        ...dynamicValues,
-      },
+      metricValues: {...report.metricValues, ...dynamicValues},
     );
   }
 
-  Future<List<IbadatReport>> _hydrateReports(List<Map<String, dynamic>> data) async {
-    final reports = <IbadatReport>[];
-    for (final item in data) {
-      reports.add(await _hydrateReport(item));
+  Future<List<IbadatReport>> _hydrateReports(
+    List<Map<String, dynamic>> data,
+  ) async {
+    final reports = data.map(IbadatReport.fromJson).toList();
+    final reportIds = reports
+        .map((report) => report.id)
+        .whereType<String>()
+        .toList();
+    if (reportIds.isEmpty) {
+      return reports;
     }
-    return reports;
+
+    final valuesByReportId = await _store.getMetricValuesForReports(reportIds);
+    return reports.map((report) {
+      final reportId = report.id;
+      if (reportId == null) {
+        return report;
+      }
+
+      final dynamicValues = valuesByReportId[reportId];
+      if (dynamicValues == null || dynamicValues.isEmpty) {
+        return report;
+      }
+
+      return report.copyWith(
+        metricValues: {...report.metricValues, ...dynamicValues},
+      );
+    }).toList();
   }
 }
 
@@ -473,7 +509,40 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
   }
 
   @override
-  Future<void> replaceMetricValues(String reportId, Map<String, int> metricValues) async {
+  Future<Map<String, Map<String, int>>> getMetricValuesForReports(
+    List<String> reportIds,
+  ) async {
+    if (reportIds.isEmpty) {
+      return const {};
+    }
+
+    final data = await _client
+        .from('report_metric_values')
+        .select('report_id, metric_id, value')
+        .inFilter('report_id', reportIds);
+
+    final valuesByReportId = <String, Map<String, int>>{
+      for (final reportId in reportIds) reportId: <String, int>{},
+    };
+    for (final row in data as List) {
+      final map = Map<String, dynamic>.from(row as Map);
+      final reportId = map['report_id']?.toString();
+      final metricId = map['metric_id']?.toString();
+      final value = map['value'];
+      if (reportId == null || metricId == null || value == null) {
+        continue;
+      }
+      valuesByReportId.putIfAbsent(reportId, () => <String, int>{})[metricId] =
+          value as int;
+    }
+    return valuesByReportId;
+  }
+
+  @override
+  Future<void> replaceMetricValues(
+    String reportId,
+    Map<String, int> metricValues,
+  ) async {
     final rows = metricValues.entries
         .map(
           (entry) => {

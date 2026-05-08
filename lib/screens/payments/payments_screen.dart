@@ -16,11 +16,13 @@ import 'member_payments_screen.dart';
 class PaymentsScreen extends StatefulWidget {
   final IbadatProfile profile;
   final IbadatGroup group;
+  final int reloadToken;
 
   const PaymentsScreen({
     super.key,
     required this.profile,
     required this.group,
+    this.reloadToken = 0,
   });
 
   @override
@@ -48,6 +50,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     _profileRepo = ProfileRepository(client);
     AccentProvider.instance.addListener(_onAccentChanged);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(PaymentsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reloadToken != widget.reloadToken ||
+        oldWidget.group.id != widget.group.id) {
+      _load();
+    }
   }
 
   @override

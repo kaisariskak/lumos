@@ -31,6 +31,9 @@ class AppStrings {
   final String accessDenied;
   final String notAllowedDesc;
   final String profileNotLoaded;
+  final String googleAccountRequiredTitle;
+  final String googleAccountRequiredMessage;
+  final String openSettings;
 
   // ── Group Picker ───────────────────────────────────────
   final String selectGroup;
@@ -148,6 +151,7 @@ class AppStrings {
   final String fixedAmountLabel;
   final String partiallyPaidLabel;
   final String partiallyPaidStatus;
+  final String remainingDebtLabel;
   final String editFixedAmount;
 
   // ── Home / Report ──────────────────────────────────────
@@ -271,6 +275,9 @@ class AppStrings {
     required this.accessDenied,
     required this.notAllowedDesc,
     required this.profileNotLoaded,
+    required this.googleAccountRequiredTitle,
+    required this.googleAccountRequiredMessage,
+    required this.openSettings,
     required this.selectGroup,
     required this.groupSubtitle,
     required this.availableGroups,
@@ -376,6 +383,7 @@ class AppStrings {
     required this.fixedAmountLabel,
     required this.partiallyPaidLabel,
     required this.partiallyPaidStatus,
+    required this.remainingDebtLabel,
     required this.editFixedAmount,
     required this.weekLabel,
     required this.monthLabel,
@@ -488,6 +496,10 @@ const _kk = AppStrings(
   accessDenied: 'Жүйеге кіру мүмкін емес',
   notAllowedDesc: 'Сізді әлі администратор жүйеге тіркемеген. Администраторға хабарласыңыз.',
   profileNotLoaded: 'Профиль жүктелмеді',
+  googleAccountRequiredTitle: 'Google аккаунты қажет',
+  googleAccountRequiredMessage:
+      'Кіру үшін телефон параметрлеріне Google аккаунтын қосыңыз: Параметрлер → Аккаунттар → Аккаунт қосу → Google. Содан кейін қайта кіріп көріңіз.',
+  openSettings: 'Параметрлерді ашу',
 
   selectGroup: 'Топты таңдаңыз',
   groupSubtitle: 'Ибадатыңызды бірге жүргізіңіз',
@@ -599,6 +611,7 @@ const _kk = AppStrings(
   fixedAmountLabel: 'Белгіленген сома (₸)',
   partiallyPaidLabel: '⚠️ Толық емес',
   partiallyPaidStatus: 'Толық емес',
+  remainingDebtLabel: 'Қарыз',
   editFixedAmount: 'Белгіленген соманы өзгерту',
 
   weekLabel: 'Апта',
@@ -712,6 +725,10 @@ const _ru = AppStrings(
   accessDenied: 'Доступ закрыт',
   notAllowedDesc: 'Вас ещё не зарегистрировал администратор. Обратитесь к нему.',
   profileNotLoaded: 'Профиль не загружен',
+  googleAccountRequiredTitle: 'Нужен Google-аккаунт',
+  googleAccountRequiredMessage:
+      'Чтобы войти, добавьте Google-аккаунт в настройки телефона: Настройки → Аккаунты → Добавить аккаунт → Google. После этого попробуйте войти снова.',
+  openSettings: 'Открыть настройки',
 
   selectGroup: 'Выберите группу',
   groupSubtitle: 'Ведите ибадаты вместе',
@@ -823,6 +840,7 @@ const _ru = AppStrings(
   fixedAmountLabel: 'Фиксированная сумма (₸)',
   partiallyPaidLabel: '⚠️ Частично',
   partiallyPaidStatus: 'Частично оплачено',
+  remainingDebtLabel: 'Должен',
   editFixedAmount: 'Изменить фикс. сумму',
 
   weekLabel: 'Неделя',

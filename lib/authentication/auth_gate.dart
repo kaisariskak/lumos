@@ -12,6 +12,7 @@ import '../screens/invite_code/invite_code_screen.dart';
 import '../screens/main_scaffold.dart';
 import '../screens/registration/registration_screen.dart';
 import '../screens/pin/pin_screen.dart';
+import '../services/auth_logout_service.dart';
 import '../services/pin_service.dart';
 
 class AuthGate extends StatefulWidget {
@@ -171,7 +172,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _logout() async {
-    await Supabase.instance.client.auth.signOut();
+    await AuthLogoutService.signOut();
   }
 
   @override
