@@ -1,30 +1,190 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/app_config.dart';
 import '../../l10n/app_strings.dart';
+import '../../repositories/profile_repository.dart';
+import '../../services/auth_error_message.dart';
 import '../../services/google_auth_error_action.dart';
 import '../../services/google_sign_in_service.dart';
+import '../../services/username_auth_mapper.dart';
+
+typedef PasswordSignIn = Future<void> Function(String login, String password);
+
+enum _AuthLoadingTarget { password, google }
 
 class IbadatAuthorization extends StatefulWidget {
-  const IbadatAuthorization({super.key});
+  final PasswordSignIn? signInWithPassword;
+
+  const IbadatAuthorization({super.key, this.signInWithPassword});
 
   @override
   State<IbadatAuthorization> createState() => _IbadatAuthorizationState();
 }
 
 class _IbadatAuthorizationState extends State<IbadatAuthorization> {
-  bool _isLoading = false;
+  final _loginCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _nicknameCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+
+  _AuthLoadingTarget? _loadingTarget;
+  bool _registerMode = false;
+  bool _passwordVisible = false;
+  String? _loginError;
+  String? _passwordError;
+  String? _nicknameError;
+  String? _codeError;
+
+  static final _nicknameRe = RegExp(
+    r'^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі0-9 _.\-]+$',
+  );
+
+  @override
+  void dispose() {
+    _loginCtrl.dispose();
+    _passwordCtrl.dispose();
+    _nicknameCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _loginValid {
+    try {
+      UsernameAuthMapper.normalizeLogin(_loginCtrl.text);
+      return true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  bool get _passwordValid => _passwordCtrl.text.length >= 6;
+
+  bool get _isLoading => _loadingTarget != null;
+  bool get _isPasswordLoading => _loadingTarget == _AuthLoadingTarget.password;
+  bool get _isGoogleLoading => _loadingTarget == _AuthLoadingTarget.google;
+
+  bool get _nicknameValid {
+    final nickname = _nicknameCtrl.text.trim();
+    return nickname.length >= 2 &&
+        nickname.length <= 32 &&
+        _nicknameRe.hasMatch(nickname);
+  }
+
+  bool get _codeValid => _codeCtrl.text.trim().isNotEmpty;
+
+  bool get _formValid {
+    if (!_loginValid || !_passwordValid) return false;
+    if (!_registerMode) return true;
+    return _nicknameValid && _codeValid;
+  }
+
+  void _syncValidation() {
+    if (_loginError != null && _loginValid) _loginError = null;
+    if (_passwordError != null && _passwordValid) _passwordError = null;
+    if (_nicknameError != null && _nicknameValid) _nicknameError = null;
+    if (_codeError != null && _codeValid) _codeError = null;
+  }
+
+  Future<void> _submitUsernamePassword() async {
+    final s = S.of(context);
+    setState(() {
+      _syncValidation();
+      _loginError = _loginValid ? null : s.authLoginInvalid;
+      _passwordError = _passwordValid ? null : s.authPasswordInvalid;
+      if (_registerMode) {
+        _nicknameError = _nicknameValid ? null : s.errorNicknameInvalid;
+        _codeError = _codeValid ? null : s.errorInviteInvalid;
+      }
+    });
+
+    if (!_formValid || _isLoading) return;
+
+    setState(() => _loadingTarget = _AuthLoadingTarget.password);
+    try {
+      final authEmail = UsernameAuthMapper.toAuthEmail(_loginCtrl.text);
+      if (_registerMode) {
+        await Supabase.instance.client.auth.signUp(
+          email: authEmail,
+          password: _passwordCtrl.text,
+          data: {'login': UsernameAuthMapper.normalizeLogin(_loginCtrl.text)},
+        );
+
+        if (Supabase.instance.client.auth.currentSession == null) {
+          throw AuthException(s.authRegistrationNeedsSession);
+        }
+
+        final repo = ProfileRepository(Supabase.instance.client);
+        await repo.registerWithInvite(
+          nickname: _nicknameCtrl.text.trim(),
+          code: _codeCtrl.text.trim().toUpperCase(),
+        );
+      } else {
+        final injectedSignIn = widget.signInWithPassword;
+        if (injectedSignIn != null) {
+          await injectedSignIn(_loginCtrl.text, _passwordCtrl.text);
+        } else {
+          await Supabase.instance.client.auth.signInWithPassword(
+            email: authEmail,
+            password: _passwordCtrl.text,
+          );
+        }
+      }
+    } on RegistrationException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        switch (e.reason) {
+          case 'nickname_taken':
+            _nicknameError = s.errorNicknameTaken;
+            break;
+          case 'invalid_nickname':
+            _nicknameError = s.errorNicknameInvalid;
+            break;
+          case 'invalid_code':
+            _codeError = s.errorInviteInvalid;
+            break;
+          case 'expired_code':
+          case 'code_already_used':
+            _codeError = s.errorInviteExpired;
+            break;
+          default:
+            _codeError = '${s.error}: ${e.reason}';
+        }
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authErrorMessage(S.of(context), e.message)),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } on FormatException catch (_) {
+      if (!mounted) return;
+      setState(() => _loginError = s.authLoginInvalid);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${s.error}: $e'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingTarget = null);
+    }
+  }
 
   Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true);
+    setState(() => _loadingTarget = _AuthLoadingTarget.google);
     try {
       await GoogleSignInService.ensureInitialized();
       final googleUser = await GoogleSignIn.instance.authenticate();
       final auth = googleUser.authentication;
       final idToken = auth.idToken;
-      if (idToken == null) throw Exception('ID token жоқ');
+      if (idToken == null) throw Exception('ID token missing');
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
@@ -32,7 +192,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
       );
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
-        setState(() => _isLoading = false);
+        setState(() => _loadingTarget = null);
         return;
       }
       if (!mounted) return;
@@ -53,35 +213,27 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
       }
     } on AuthException catch (e) {
       if (!mounted) return;
-      final isNotRegistered =
-          e.message.contains('Database error saving new user') ||
-          e.message.contains('unexpected_failure') ||
-          e.statusCode == '422';
-      final s = S.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isNotRegistered ? s.notRegistered : e.message),
-          backgroundColor: isNotRegistered ? const Color(0xFFDC2626) : null,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      _showGoogleAuthError(e.message, e.statusCode);
     } catch (e) {
       if (!mounted) return;
-      final msg = e.toString();
-      final isNotRegistered =
-          msg.contains('Database error saving new user') ||
-          msg.contains('unexpected_failure');
-      final s = S.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isNotRegistered ? s.notRegistered : '${s.error}: $e'),
-          backgroundColor: isNotRegistered ? const Color(0xFFDC2626) : null,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      _showGoogleAuthError(e.toString(), null);
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _loadingTarget = null);
     }
+  }
+
+  void _showGoogleAuthError(String message, String? statusCode) {
+    final isNotRegistered = message.contains('Database error saving new user') ||
+        message.contains('unexpected_failure') ||
+        statusCode == '422';
+    final s = S.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isNotRegistered ? s.notRegistered : message),
+        backgroundColor: isNotRegistered ? const Color(0xFFDC2626) : null,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _signInWithGoogleOAuth() {
@@ -92,124 +244,94 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     );
   }
 
+  void _toggleMode() {
+    setState(() {
+      _registerMode = !_registerMode;
+      _loginError = null;
+      _passwordError = null;
+      _nicknameError = null;
+      _codeError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
-      body: Container(
+      backgroundColor: const Color(0xFF101820),
+      body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
-            stops: [0.0, 0.5, 1.0],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF101820), Color(0xFF132B2B), Color(0xFF1F2430)],
           ),
         ),
         child: SafeArea(
           child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Glow ambient
-                  const _AmbientGlow(),
-
-                  // App icon
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x664F46E5),
-                          blurRadius: 32,
-                          offset: Offset(0, 8),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _BrandHeader(subtitle: s.appSubtitle, title: s.appTitle),
+                    const SizedBox(height: 24),
+                    _AuthPanel(
+                      registerMode: _registerMode,
+                      loading: _isLoading,
+                      passwordLoading: _isPasswordLoading,
+                      formValid: _formValid,
+                      loginController: _loginCtrl,
+                      passwordController: _passwordCtrl,
+                      nicknameController: _nicknameCtrl,
+                      codeController: _codeCtrl,
+                      loginError: _loginError,
+                      passwordError: _passwordError,
+                      nicknameError: _nicknameError,
+                      codeError: _codeError,
+                      passwordVisible: _passwordVisible,
+                      onChanged: () => setState(_syncValidation),
+                      onTogglePassword: () =>
+                          setState(() => _passwordVisible = !_passwordVisible),
+                      onSubmit: _submitUsernamePassword,
+                      onToggleMode: _toggleMode,
+                    ),
+                    const SizedBox(height: 16),
+                    _DividerLabel(text: s.authOr),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('auth-google-button'),
+                        onPressed: _isLoading ? null : _signInWithGoogle,
+                        icon: _isGoogleLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFE8F3EE),
+                                ),
+                              )
+                            : const _GoogleIcon(),
+                        label: Text(
+                          _isGoogleLoading ? s.signingIn : s.signInGoogle,
                         ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Text('📖', style: TextStyle(fontSize: 48)),
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Title
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFE2E8F0), Color(0xFFA5B4FC)],
-                    ).createShader(bounds),
-                    child: Text(
-                      s.appTitle,
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    s.appSubtitle,
-                    style: const TextStyle(
-                      color: Color(0xFF94A3B8),
-                      fontSize: 14,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 48),
-
-                  // Google Sign-In button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _signInWithGoogle,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.black54,
-                              ),
-                            )
-                          : const _GoogleIcon(),
-                      label: Text(
-                        _isLoading ? s.signingIn : s.signInGoogle,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF1F2937),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFE8F3EE),
+                          side: const BorderSide(color: Color(0x334ADE80)),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF1F2937),
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        shadowColor: Colors.black26,
-                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    s.noPassword,
-                    style: const TextStyle(
-                      color: Color(0xFF475569),
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -219,12 +341,335 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   }
 }
 
-class _AmbientGlow extends StatelessWidget {
-  const _AmbientGlow();
+class _BrandHeader extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _BrandHeader({required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox.shrink();
+    return Column(
+      children: [
+        Container(
+          width: 78,
+          height: 78,
+          decoration: BoxDecoration(
+            color: const Color(0xFF152A2D),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0x334ADE80)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x3322C55E),
+                blurRadius: 24,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.auto_stories_rounded,
+            color: Color(0xFFF6C453),
+            size: 38,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFFF8FAFC),
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFFB8C7C1), fontSize: 14),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthPanel extends StatelessWidget {
+  final bool registerMode;
+  final bool loading;
+  final bool passwordLoading;
+  final bool formValid;
+  final bool passwordVisible;
+  final TextEditingController loginController;
+  final TextEditingController passwordController;
+  final TextEditingController nicknameController;
+  final TextEditingController codeController;
+  final String? loginError;
+  final String? passwordError;
+  final String? nicknameError;
+  final String? codeError;
+  final VoidCallback onChanged;
+  final VoidCallback onTogglePassword;
+  final VoidCallback onSubmit;
+  final VoidCallback onToggleMode;
+
+  const _AuthPanel({
+    required this.registerMode,
+    required this.loading,
+    required this.passwordLoading,
+    required this.formValid,
+    required this.passwordVisible,
+    required this.loginController,
+    required this.passwordController,
+    required this.nicknameController,
+    required this.codeController,
+    required this.loginError,
+    required this.passwordError,
+    required this.nicknameError,
+    required this.codeError,
+    required this.onChanged,
+    required this.onTogglePassword,
+    required this.onSubmit,
+    required this.onToggleMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xE61B2528),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0x244ADE80)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 28,
+            offset: Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  registerMode ? s.authCreateAccount : s.authWelcomeBack,
+                  style: const TextStyle(
+                    color: Color(0xFFF8FAFC),
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('auth-mode-toggle'),
+                onPressed: loading ? null : onToggleMode,
+                child: Text(
+                  registerMode ? s.authHaveAccount : s.authNeedAccount,
+                  textAlign: TextAlign.end,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _AuthField(
+            key: const ValueKey('auth-login-field'),
+            controller: loginController,
+            label: s.authLoginLabel,
+            hint: s.authLoginHint,
+            icon: Icons.alternate_email_rounded,
+            errorText: loginError,
+            onChanged: (_) => onChanged(),
+          ),
+          const SizedBox(height: 12),
+          _AuthField(
+            key: const ValueKey('auth-password-field'),
+            controller: passwordController,
+            label: s.authPasswordLabel,
+            hint: s.authPasswordHint,
+            icon: Icons.lock_outline_rounded,
+            errorText: passwordError,
+            obscureText: !passwordVisible,
+            suffixIcon: IconButton(
+              onPressed: onTogglePassword,
+              icon: Icon(
+                passwordVisible
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+              ),
+            ),
+            onChanged: (_) => onChanged(),
+            onSubmitted: (_) => onSubmit(),
+          ),
+          if (registerMode) ...[
+            const SizedBox(height: 12),
+            _AuthField(
+              key: const ValueKey('auth-nickname-field'),
+              controller: nicknameController,
+              label: s.nicknameLabel,
+              hint: s.nicknameHint,
+              icon: Icons.badge_outlined,
+              errorText: nicknameError,
+              onChanged: (_) => onChanged(),
+            ),
+            const SizedBox(height: 12),
+            _AuthField(
+              key: const ValueKey('auth-code-field'),
+              controller: codeController,
+              label: s.inviteCodeLabel,
+              hint: s.inviteCodeShortHint,
+              icon: Icons.key_rounded,
+              errorText: codeError,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                  return newValue.copyWith(text: newValue.text.toUpperCase());
+                }),
+              ],
+              onChanged: (_) => onChanged(),
+              onSubmitted: (_) => onSubmit(),
+            ),
+          ],
+          const SizedBox(height: 18),
+          ElevatedButton(
+            key: const ValueKey('auth-submit-button'),
+            onPressed: formValid && !loading ? onSubmit : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF22C55E),
+              foregroundColor: const Color(0xFF062014),
+              disabledBackgroundColor: const Color(0x5534D399),
+              disabledForegroundColor: const Color(0x889DB5AB),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: passwordLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF062014),
+                    ),
+                  )
+                : Text(
+                    registerMode ? s.submitRegistration : s.authSignIn,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final IconData icon;
+  final String? errorText;
+  final bool obscureText;
+  final Widget? suffixIcon;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final TextCapitalization textCapitalization;
+  final List<TextInputFormatter>? inputFormatters;
+
+  const _AuthField({
+    super.key,
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.errorText,
+    this.obscureText = false,
+    this.suffixIcon,
+    this.onChanged,
+    this.onSubmitted,
+    this.textCapitalization = TextCapitalization.none,
+    this.inputFormatters,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      textCapitalization: textCapitalization,
+      inputFormatters: inputFormatters,
+      style: const TextStyle(
+        color: Color(0xFFF8FAFC),
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        errorText: errorText,
+        prefixIcon: Icon(icon, color: const Color(0xFF8DB9A5)),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: const Color(0xFF111A1D),
+        labelStyle: const TextStyle(color: Color(0xFF9DB5AB)),
+        hintStyle: const TextStyle(color: Color(0xFF51635D)),
+        errorMaxLines: 2,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0x2234D399)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0x2234D399)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF22C55E), width: 1.4),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
+      ),
+    );
+  }
+}
+
+class _DividerLabel extends StatelessWidget {
+  final String text;
+
+  const _DividerLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Expanded(child: Divider(color: Color(0x334ADE80))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            text,
+            style: const TextStyle(color: Color(0xFF789085), fontSize: 12),
+          ),
+        ),
+        const Expanded(child: Divider(color: Color(0x334ADE80))),
+      ],
+    );
   }
 }
 
@@ -245,28 +690,23 @@ class _GooglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width;
-    // Simplified Google 'G' logo approximation using colored arcs
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = s * 0.13;
 
-    // Red arc (top)
     paint.color = const Color(0xFFEA4335);
     canvas.drawArc(Rect.fromLTWH(0, 0, s, s), -2.36, 1.57, false, paint);
 
-    // Blue arc (right)
     paint.color = const Color(0xFF4285F4);
     canvas.drawArc(Rect.fromLTWH(0, 0, s, s), -0.79, 1.57, false, paint);
 
-    // Yellow arc (bottom)
     paint.color = const Color(0xFFFBBC05);
     canvas.drawArc(Rect.fromLTWH(0, 0, s, s), 0.79, 1.57, false, paint);
 
-    // Green arc (left)
     paint.color = const Color(0xFF34A853);
     canvas.drawArc(Rect.fromLTWH(0, 0, s, s), 2.36, 1.57, false, paint);
   }
 
   @override
-  bool shouldRepaint(_GooglePainter old) => false;
+  bool shouldRepaint(_GooglePainter oldDelegate) => false;
 }

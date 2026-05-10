@@ -18,9 +18,7 @@ void main() {
 IbadatProfile _profile({required String id, required String nickname}) {
   return IbadatProfile(
     id: id,
-    userId: id,
     nickname: nickname,
-    email: '$id@example.com',
     role: 'user',
     currentGroupId: 'group',
     createdAt: DateTime(2026),

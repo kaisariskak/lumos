@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_profile_wait.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
@@ -30,6 +31,7 @@ class _AuthGateState extends State<AuthGate> {
   bool _showRegistration = false;
   bool _profileError = false;
   bool _pinRequired = false;
+  bool _waitingForUsernameProfile = false;
 
   IbadatProfile? _profile;
 
@@ -48,6 +50,7 @@ class _AuthGateState extends State<AuthGate> {
           _checkingBiometric = false;
           _pinRequired = false;
           _profileError = false;
+          _waitingForUsernameProfile = false;
           _profile = null;
           _showGroupPicker = false;
           _showInviteCode = false;
@@ -84,7 +87,7 @@ class _AuthGateState extends State<AuthGate> {
     _loadProfile();
   }
 
-  Future<void> _loadProfile() async {
+  Future<void> _loadProfile({int usernameProfileAttempts = 0}) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
     try {
@@ -92,10 +95,28 @@ class _AuthGateState extends State<AuthGate> {
       IbadatProfile? profile = await repo.getProfile(user.id);
 
       if (profile == null) {
+        if (AuthProfileWait.shouldWaitForUsernameProfile(user.userMetadata) &&
+            usernameProfileAttempts < 12) {
+          if (!mounted) return;
+          setState(() {
+            _profile = null;
+            _waitingForUsernameProfile = true;
+            _showRegistration = false;
+            _showInviteCode = false;
+            _showGroupPicker = false;
+          });
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          if (!mounted) return;
+          return _loadProfile(
+            usernameProfileAttempts: usernameProfileAttempts + 1,
+          );
+        }
+
         // No profile → must register (nickname + invite code).
         if (!mounted) return;
         setState(() {
           _profile = null;
+          _waitingForUsernameProfile = false;
           _showRegistration = true;
           _showInviteCode = false;
           _showGroupPicker = false;
@@ -108,6 +129,7 @@ class _AuthGateState extends State<AuthGate> {
         if (!mounted) return;
         setState(() {
           _profile = profile;
+          _waitingForUsernameProfile = false;
           _showInviteCode = true;
           _showRegistration = false;
           _showGroupPicker = false;
@@ -118,6 +140,7 @@ class _AuthGateState extends State<AuthGate> {
       if (!mounted) return;
       setState(() {
         _profile = profile;
+        _waitingForUsernameProfile = false;
         _showGroupPicker = false;
         _showInviteCode = false;
         _showRegistration = false;
@@ -242,6 +265,16 @@ class _AuthGateState extends State<AuthGate> {
               ),
             ],
           ),
+        ),
+      );
+    }
+
+    // Username/password sign-up creates auth first, then profile via RPC.
+    if (_waitingForUsernameProfile) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF6366F1)),
         ),
       );
     }

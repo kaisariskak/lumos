@@ -1,0 +1,11 @@
+import '../l10n/app_strings.dart';
+
+String authErrorMessage(AppStrings s, String message) {
+  final normalized = message.toLowerCase();
+  if (normalized.contains('invalid login credentials')) {
+    return s.languageCode == 'ru'
+        ? 'Неверный логин или пароль'
+        : 'Логин немесе құпиясөз дұрыс емес';
+  }
+  return message;
+}

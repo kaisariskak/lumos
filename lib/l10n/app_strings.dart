@@ -928,6 +928,33 @@ const _ru = AppStrings(
 // ── Category / Unit helpers ────────────────────────────────────────────────
 
 extension AppStringsX on AppStrings {
+  String get authWelcomeBack =>
+      languageCode == 'ru' ? 'С возвращением' : 'Қайта қош келдіңіз';
+  String get authCreateAccount =>
+      languageCode == 'ru' ? 'Создать аккаунт' : 'Аккаунт ашу';
+  String get authNeedAccount =>
+      languageCode == 'ru' ? 'Регистрация' : 'Тіркелу';
+  String get authHaveAccount =>
+      languageCode == 'ru' ? 'Уже есть аккаунт' : 'Аккаунтым бар';
+  String get authLoginLabel => languageCode == 'ru' ? 'Логин' : 'Логин';
+  String get authLoginHint =>
+      languageCode == 'ru' ? 'например: nur_01' : 'мысалы: nur_01';
+  String get authPasswordLabel =>
+      languageCode == 'ru' ? 'Пароль' : 'Құпиясөз';
+  String get authPasswordHint =>
+      languageCode == 'ru' ? 'минимум 6 символов' : 'кемінде 6 таңба';
+  String get authSignIn => languageCode == 'ru' ? 'Войти' : 'Кіру';
+  String get authOr => languageCode == 'ru' ? 'или' : 'немесе';
+  String get authLoginInvalid => languageCode == 'ru'
+      ? 'Логин: 3-32 символа, латиница, цифры, точка, тире или _'
+      : 'Логин: 3-32 таңба, латын әріптері, цифрлар, нүкте, тире немесе _';
+  String get authPasswordInvalid => languageCode == 'ru'
+      ? 'Пароль должен быть не короче 6 символов'
+      : 'Құпиясөз кемінде 6 таңба болуы керек';
+  String get authRegistrationNeedsSession => languageCode == 'ru'
+      ? 'Регистрация создана, но вход не открыт. Отключите обязательное email-подтверждение в Supabase или добавьте серверную регистрацию.'
+      : 'Тіркелу жасалды, бірақ кіру ашылмады. Supabase email растауын өшіріңіз немесе серверлік тіркеуді қосыңыз.';
+
   String manualValueHint(int max, String unit) {
     if (languageCode == 'ru') {
       return 'Обычный диапазон: 0..$max $unit';
