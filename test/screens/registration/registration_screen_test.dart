@@ -4,17 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reportdeepen/screens/registration/registration_screen.dart';
 
 void main() {
-  testWidgets('submit button is disabled until both fields valid',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      // S.of(context) only reads Localizations.localeOf(context).languageCode,
-      // so a plain MaterialApp with `locale` set is enough — no custom delegate.
-      locale: const Locale('kk'),
-      home: RegistrationScreen(
-        onRegistered: (_) {},
-        onLogout: () {},
+  testWidgets('submit button is disabled until both fields valid', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        // S.of(context) only reads Localizations.localeOf(context).languageCode,
+        // so a plain MaterialApp with `locale` set is enough — no custom delegate.
+        locale: const Locale('kk'),
+        home: RegistrationScreen(onRegistered: (_) {}, onLogout: () {}),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -39,5 +39,27 @@ void main() {
       isNotNull,
       reason: 'button enabled when both fields valid',
     );
+  });
+
+  testWidgets('matches authorization screen visual style', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ru'),
+        home: RegistrationScreen(onRegistered: (_) {}, onLogout: () {}),
+      ),
+    );
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    expect(scaffold.backgroundColor, const Color(0xFF101820));
+    expect(find.byIcon(Icons.auto_stories_rounded), findsOneWidget);
+    expect(find.text('Ибадат Трекер'), findsOneWidget);
+
+    final firstField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(firstField.decoration?.fillColor, const Color(0xFF111A1D));
+    expect(firstField.decoration?.prefixIcon, isA<Icon>());
+
+    final submit = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+    final background = submit.style?.backgroundColor?.resolve(<WidgetState>{});
+    expect(background, const Color(0xFF22C55E));
   });
 }
