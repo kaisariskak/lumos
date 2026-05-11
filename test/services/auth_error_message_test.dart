@@ -18,6 +18,20 @@ void main() {
       );
     });
 
+    test('translates duplicate login to Russian', () {
+      expect(
+        authErrorMessage(_strings('ru'), 'User already registered'),
+        'Такой логин уже занят',
+      );
+    });
+
+    test('translates duplicate login to Kazakh', () {
+      expect(
+        authErrorMessage(_strings('kk'), 'User already registered'),
+        'Бұл логин бос емес',
+      );
+    });
+
     test('keeps unknown messages unchanged', () {
       expect(authErrorMessage(_strings('ru'), 'Something else'), 'Something else');
     });

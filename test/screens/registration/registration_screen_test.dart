@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:reportdeepen/repositories/profile_repository.dart';
 import 'package:reportdeepen/screens/registration/registration_screen.dart';
 
 void main() {
@@ -52,7 +53,7 @@ void main() {
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
     expect(scaffold.backgroundColor, const Color(0xFF101820));
     expect(find.byIcon(Icons.auto_stories_rounded), findsOneWidget);
-    expect(find.text('Ибадат Трекер'), findsOneWidget);
+    expect(find.text('Мухасаба'), findsOneWidget);
 
     final firstField = tester.widget<TextField>(find.byType(TextField).first);
     expect(firstField.decoration?.fillColor, const Color(0xFF111A1D));
@@ -61,5 +62,39 @@ void main() {
     final submit = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
     final background = submit.style?.backgroundColor?.resolve(<WidgetState>{});
     expect(background, const Color(0xFF22C55E));
+  });
+
+  testWidgets('invalid code discards auth user and logs out', (tester) async {
+    var discarded = false;
+    var loggedOut = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ru'),
+        home: RegistrationScreen(
+          onRegistered: (_) {},
+          onLogout: () => loggedOut = true,
+          registerWithInvite: ({required nickname, required code}) async {
+            throw const RegistrationException('invalid_code');
+          },
+          discardUnregisteredAuthUser: () async {
+            discarded = true;
+          },
+        ),
+      ),
+    );
+
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Isk');
+    await tester.enterText(fields.at(1), 'ASDTYUI');
+    await tester.pump();
+
+    await tester.tap(find.byType(ElevatedButton));
+    await tester.pump();
+    await tester.pump();
+
+    expect(discarded, isTrue);
+    expect(loggedOut, isTrue);
+    expect(find.text('Код не найден'), findsOneWidget);
   });
 }

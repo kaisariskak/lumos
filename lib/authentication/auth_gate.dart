@@ -32,6 +32,7 @@ class _AuthGateState extends State<AuthGate> {
   bool _profileError = false;
   bool _pinRequired = false;
   bool _waitingForUsernameProfile = false;
+  bool _usernameRegistrationInProgress = false;
 
   IbadatProfile? _profile;
 
@@ -43,6 +44,9 @@ class _AuthGateState extends State<AuthGate> {
         Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       if (data.event == AuthChangeEvent.signedIn) {
+        if (_usernameRegistrationInProgress) {
+          return;
+        }
         setState(() => _checkingBiometric = false);
         _loadProfile();
       } else if (data.event == AuthChangeEvent.signedOut) {
@@ -55,6 +59,7 @@ class _AuthGateState extends State<AuthGate> {
           _showGroupPicker = false;
           _showInviteCode = false;
           _showRegistration = false;
+          _usernameRegistrationInProgress = false;
         });
       }
     });
@@ -219,7 +224,26 @@ class _AuthGateState extends State<AuthGate> {
     final session = Supabase.instance.client.auth.currentSession;
 
     // No session → sign in
-    if (session == null) return const IbadatAuthorization();
+    if (session == null || _usernameRegistrationInProgress) {
+      return IbadatAuthorization(
+        onUsernameRegistrationStarted: () {
+          if (mounted) {
+            setState(() => _usernameRegistrationInProgress = true);
+          }
+        },
+        onUsernameRegistrationFinished: () {
+          if (mounted) {
+            setState(() => _usernameRegistrationInProgress = false);
+          }
+        },
+        onUsernameRegistrationCompleted: () {
+          if (mounted) {
+            setState(() => _usernameRegistrationInProgress = false);
+          }
+          _loadProfile();
+        },
+      );
+    }
 
     // PIN required
     if (_pinRequired) {

@@ -470,7 +470,7 @@ class AppStrings {
 
 const _kk = AppStrings(
   languageCode: 'kk',
-  appTitle: 'Ибадат Трекер',
+  appTitle: 'Мұхасаба',
   back: 'Артқа',
   cancel: 'Болдырмау',
   yes: 'Иә',
@@ -485,7 +485,7 @@ const _kk = AppStrings(
   codeCopied: 'Код көшірілді',
   retry: 'Қайталау',
 
-  appSubtitle: 'Апталық ибадатыңызды жүргізіңіз',
+  appSubtitle: 'Бір апталық Мұхасаба',
   signInGoogle: 'Google арқылы кіру',
   signingIn: 'Кіруде...',
   noPassword: 'Құпиясөз қажет емес',
@@ -699,7 +699,7 @@ const _kk = AppStrings(
 
 const _ru = AppStrings(
   languageCode: 'ru',
-  appTitle: 'Ибадат Трекер',
+  appTitle: 'Мухасаба',
   back: 'Назад',
   cancel: 'Отмена',
   yes: 'Да',
@@ -714,7 +714,7 @@ const _ru = AppStrings(
   codeCopied: 'Код скопирован',
   retry: 'Повторить',
 
-  appSubtitle: 'Отслеживайте еженедельные ибадаты',
+  appSubtitle: 'Еженедельная Мухасаба',
   signInGoogle: 'Войти через Google',
   signingIn: 'Входим...',
   noPassword: 'Пароль не нужен',

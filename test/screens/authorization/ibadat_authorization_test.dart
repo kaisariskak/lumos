@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reportdeepen/repositories/profile_repository.dart';
 import 'package:reportdeepen/screens/authorization/ibadat_authorization.dart';
 
 void main() {
@@ -20,6 +21,27 @@ void main() {
     return MaterialApp(
       locale: const Locale('ru'),
       home: IbadatAuthorization(signInWithPassword: signIn),
+    );
+  }
+
+  Widget appWithRegistration({
+    required Future<void> Function(
+      String login,
+      String password,
+      String nickname,
+      String code,
+    )
+    register,
+    Future<void> Function(String nickname, String code)? preflight,
+    Future<void> Function()? rollback,
+  }) {
+    return MaterialApp(
+      locale: const Locale('ru'),
+      home: IbadatAuthorization(
+        registerWithPassword: register,
+        preflightRegistration: preflight,
+        rollbackFailedRegistration: rollback,
+      ),
     );
   }
 
@@ -107,5 +129,95 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('wrong invite code stays on registration form and shows code error',
+      (tester) async {
+    var rollbackCalled = false;
+
+    await tester.pumpWidget(
+      appWithRegistration(
+        register: (_, _, _, _) async {
+          throw const RegistrationException('invalid_code');
+        },
+        rollback: () async {
+          rollbackCalled = true;
+        },
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('auth-mode-toggle')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-login-field')),
+      'kaisar',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-password-field')),
+      'secret12',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-nickname-field')),
+      'Kaisar',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-code-field')),
+      'BADCODE',
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('auth-submit-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(rollbackCalled, isTrue);
+    expect(find.byKey(const ValueKey('auth-nickname-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-code-field')), findsOneWidget);
+    expect(find.text('Код не найден'), findsOneWidget);
+  });
+
+  testWidgets('wrong invite code is rejected before username sign-up',
+      (tester) async {
+    var signUpCalled = false;
+
+    await tester.pumpWidget(
+      appWithRegistration(
+        preflight: (_, _) async {
+          throw const RegistrationException('invalid_code');
+        },
+        register: (_, _, _, _) async {
+          signUpCalled = true;
+        },
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('auth-mode-toggle')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-login-field')),
+      'kaiser',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-password-field')),
+      'secret12',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-nickname-field')),
+      'Kas',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-code-field')),
+      'AM-FREE',
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('auth-submit-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(signUpCalled, isFalse);
+    expect(find.text('Код не найден'), findsOneWidget);
   });
 }

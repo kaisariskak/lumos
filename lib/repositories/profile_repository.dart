@@ -90,6 +90,19 @@ class ProfileRepository {
   /// Atomic registration: validate nickname + invite code on the server
   /// in a single transaction. Returns the created profile on success or
   /// throws [RegistrationException] with a typed reason on failure.
+  Future<void> preflightRegistration({
+    required String nickname,
+    required String code,
+  }) async {
+    final result = await _client.rpc('preflight_register_with_invite', params: {
+      'p_nickname': nickname,
+      'p_code': code,
+    });
+    final map = (result as Map).cast<String, dynamic>();
+    if (map['ok'] == true) return;
+    throw RegistrationException(map['error']?.toString() ?? 'unknown');
+  }
+
   Future<IbadatProfile> registerWithInvite({
     required String nickname,
     required String code,
@@ -107,6 +120,13 @@ class ProfileRepository {
   }
 
   /// UX helper — true when [nickname] already taken. Used for live validation
+  /// Deletes the current auth user only if no ibadat_profile exists for it.
+  /// Used to roll back email/Google auth when invite validation fails.
+  Future<void> discardUnregisteredAuthUser() async {
+    await _client.rpc('discard_unregistered_auth_user');
+  }
+
+  /// UX helper - true when [nickname] already taken. Used for live validation
   /// on the registration screen.
   Future<bool> isNicknameTaken(String nickname) async {
     final result = await _client.rpc('is_nickname_taken', params: {

@@ -12,13 +12,38 @@ import '../../services/google_sign_in_service.dart';
 import '../../services/username_auth_mapper.dart';
 
 typedef PasswordSignIn = Future<void> Function(String login, String password);
+typedef PasswordRegistration = Future<void> Function(
+  String login,
+  String password,
+  String nickname,
+  String code,
+);
+typedef RegistrationPreflight = Future<void> Function(
+  String nickname,
+  String code,
+);
 
 enum _AuthLoadingTarget { password, google }
 
 class IbadatAuthorization extends StatefulWidget {
   final PasswordSignIn? signInWithPassword;
+  final PasswordRegistration? registerWithPassword;
+  final RegistrationPreflight? preflightRegistration;
+  final Future<void> Function()? rollbackFailedRegistration;
+  final VoidCallback? onUsernameRegistrationStarted;
+  final VoidCallback? onUsernameRegistrationFinished;
+  final VoidCallback? onUsernameRegistrationCompleted;
 
-  const IbadatAuthorization({super.key, this.signInWithPassword});
+  const IbadatAuthorization({
+    super.key,
+    this.signInWithPassword,
+    this.registerWithPassword,
+    this.preflightRegistration,
+    this.rollbackFailedRegistration,
+    this.onUsernameRegistrationStarted,
+    this.onUsernameRegistrationFinished,
+    this.onUsernameRegistrationCompleted,
+  });
 
   @override
   State<IbadatAuthorization> createState() => _IbadatAuthorizationState();
@@ -88,6 +113,17 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     if (_codeError != null && _codeValid) _codeError = null;
   }
 
+  Future<void> _rollbackFailedUsernameRegistration(bool authWasCreated) async {
+    if (!_registerMode || !authWasCreated) return;
+    try {
+      await (widget.rollbackFailedRegistration ??
+          Supabase.instance.client.auth.signOut)();
+    } catch (_) {
+      // The visible validation error is more useful than a secondary sign-out
+      // failure. AuthGate will recover on the next auth/profile refresh.
+    }
+  }
+
   Future<void> _submitUsernamePassword() async {
     final s = S.of(context);
     setState(() {
@@ -103,24 +139,48 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     if (!_formValid || _isLoading) return;
 
     setState(() => _loadingTarget = _AuthLoadingTarget.password);
+    var authWasCreated = false;
     try {
       final authEmail = UsernameAuthMapper.toAuthEmail(_loginCtrl.text);
       if (_registerMode) {
-        await Supabase.instance.client.auth.signUp(
-          email: authEmail,
-          password: _passwordCtrl.text,
-          data: {'login': UsernameAuthMapper.normalizeLogin(_loginCtrl.text)},
-        );
-
-        if (Supabase.instance.client.auth.currentSession == null) {
-          throw AuthException(s.authRegistrationNeedsSession);
+        widget.onUsernameRegistrationStarted?.call();
+        final nickname = _nicknameCtrl.text.trim();
+        final code = _codeCtrl.text.trim().toUpperCase();
+        final repo = ProfileRepository(Supabase.instance.client);
+        final injectedPreflight = widget.preflightRegistration;
+        if (injectedPreflight != null) {
+          await injectedPreflight(nickname, code);
+        } else if (widget.registerWithPassword == null) {
+          await repo.preflightRegistration(nickname: nickname, code: code);
         }
 
-        final repo = ProfileRepository(Supabase.instance.client);
-        await repo.registerWithInvite(
-          nickname: _nicknameCtrl.text.trim(),
-          code: _codeCtrl.text.trim().toUpperCase(),
-        );
+        final injectedRegistration = widget.registerWithPassword;
+        if (injectedRegistration != null) {
+          authWasCreated = true;
+          await injectedRegistration(
+            _loginCtrl.text,
+            _passwordCtrl.text,
+            nickname,
+            code,
+          );
+        } else {
+          await Supabase.instance.client.auth.signUp(
+            email: authEmail,
+            password: _passwordCtrl.text,
+            data: {'login': UsernameAuthMapper.normalizeLogin(_loginCtrl.text)},
+          );
+          authWasCreated = true;
+
+          if (Supabase.instance.client.auth.currentSession == null) {
+            throw AuthException(s.authRegistrationNeedsSession);
+          }
+
+          await repo.registerWithInvite(
+            nickname: nickname,
+            code: code,
+          );
+        }
+        widget.onUsernameRegistrationCompleted?.call();
       } else {
         final injectedSignIn = widget.signInWithPassword;
         if (injectedSignIn != null) {
@@ -133,6 +193,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
         }
       }
     } on RegistrationException catch (e) {
+      await _rollbackFailedUsernameRegistration(authWasCreated);
       if (!mounted) return;
       setState(() {
         switch (e.reason) {
@@ -154,6 +215,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
         }
       });
     } on AuthException catch (e) {
+      await _rollbackFailedUsernameRegistration(authWasCreated);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -165,6 +227,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
       if (!mounted) return;
       setState(() => _loginError = s.authLoginInvalid);
     } catch (e) {
+      await _rollbackFailedUsernameRegistration(authWasCreated);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -173,6 +236,9 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
         ),
       );
     } finally {
+      if (_registerMode) {
+        widget.onUsernameRegistrationFinished?.call();
+      }
       if (mounted) setState(() => _loadingTarget = null);
     }
   }

@@ -40,7 +40,7 @@ class _IbadatAppState extends State<IbadatApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ибадат Трекер',
+      title: 'Мухасаба',
       theme: buildDarkTheme(AccentProvider.instance.current),
       locale: LocaleProvider.instance.value,
       supportedLocales: const [

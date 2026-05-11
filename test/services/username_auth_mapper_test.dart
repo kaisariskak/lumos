@@ -10,6 +10,22 @@ void main() {
       );
     });
 
+    test('shows login instead of hidden auth email', () {
+      expect(
+        UsernameAuthMapper.displayLoginOrEmail(
+          'kaisar_01@auth.reportdeepen.app',
+        ),
+        'kaisar_01',
+      );
+    });
+
+    test('keeps real email visible for Google accounts', () {
+      expect(
+        UsernameAuthMapper.displayLoginOrEmail('user@gmail.com'),
+        'user@gmail.com',
+      );
+    });
+
     test('allows latin letters, numbers, dot, dash, and underscore', () {
       expect(
         UsernameAuthMapper.normalizeLogin('nur.admin-01'),

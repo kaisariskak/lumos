@@ -18,4 +18,16 @@ class UsernameAuthMapper {
   static String toAuthEmail(String login) {
     return '${normalizeLogin(login)}@$hiddenDomain';
   }
+
+  static String displayLoginOrEmail(String? email) {
+    if (email == null || email.isEmpty) return '';
+
+    final suffix = '@$hiddenDomain';
+    final lower = email.toLowerCase();
+    if (lower.endsWith(suffix)) {
+      return email.substring(0, email.length - suffix.length);
+    }
+
+    return email;
+  }
 }

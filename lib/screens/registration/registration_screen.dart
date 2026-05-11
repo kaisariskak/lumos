@@ -6,7 +6,14 @@ import '../../l10n/app_strings.dart';
 import '../../models/ibadat_profile.dart';
 import '../../repositories/profile_repository.dart';
 
-/// Combined nickname + invite code screen shown after Google sign-in
+typedef InviteRegistration = Future<IbadatProfile> Function({
+  required String nickname,
+  required String code,
+});
+
+typedef DiscardUnregisteredAuthUser = Future<void> Function();
+
+/// Combined nickname + invite code screen shown after email/Google sign-in
 /// when the user has no profile yet. Calls the `register_with_invite`
 /// RPC atomically.
 class RegistrationScreen extends StatefulWidget {
@@ -15,11 +22,15 @@ class RegistrationScreen extends StatefulWidget {
 
   /// Called when the user taps "Sign out".
   final VoidCallback onLogout;
+  final InviteRegistration? registerWithInvite;
+  final DiscardUnregisteredAuthUser? discardUnregisteredAuthUser;
 
   const RegistrationScreen({
     super.key,
     required this.onRegistered,
     required this.onLogout,
+    this.registerWithInvite,
+    this.discardUnregisteredAuthUser,
   });
 
   @override
@@ -62,7 +73,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     final repo = ProfileRepository(Supabase.instance.client);
     try {
-      final profile = await repo.registerWithInvite(
+      final register = widget.registerWithInvite ?? repo.registerWithInvite;
+      final profile = await register(
         nickname: _nicknameCtrl.text.trim(),
         code: _codeCtrl.text.trim().toUpperCase(),
       );
@@ -76,6 +88,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         widget.onLogout();
         return;
       }
+      await _discardAuthUserWithoutProfile(repo);
+      if (!mounted) return;
       setState(() {
         _loading = false;
         switch (e.reason) {
@@ -102,6 +116,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _loading = false;
         _codeError = '${s.error}: $e';
       });
+    }
+  }
+
+  Future<void> _discardAuthUserWithoutProfile(ProfileRepository repo) async {
+    try {
+      final discard =
+          widget.discardUnregisteredAuthUser ?? repo.discardUnregisteredAuthUser;
+      await discard();
+    } finally {
+      widget.onLogout();
     }
   }
 

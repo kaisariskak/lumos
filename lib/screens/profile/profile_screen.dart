@@ -6,6 +6,7 @@ import '../../l10n/locale_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
 import '../../services/pin_service.dart';
+import '../../services/username_auth_mapper.dart';
 import '../../theme/accent_provider.dart';
 import '../pin/pin_screen.dart';
 
@@ -122,7 +123,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            Supabase.instance.client.auth.currentUser?.email ?? '',
+            UsernameAuthMapper.displayLoginOrEmail(
+              Supabase.instance.client.auth.currentUser?.email,
+            ),
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
           ),
           const SizedBox(height: 8),
