@@ -35,6 +35,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   late final MemberSettingsRepository _settingsRepo;
   late final ProfileRepository _profileRepo;
 
+  List<IbadatGroup> _groups = [];
+  late IbadatGroup _selectedGroup;
   List<IbadatProfile> _members = [];
   Map<String, List<IbadatPayment>> _paymentsMap = {};
   Map<String, IbadatMemberSettings> _settingsMap = {};
@@ -48,6 +50,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     _groupRepo = IbadatGroupRepository(client);
     _settingsRepo = MemberSettingsRepository(client);
     _profileRepo = ProfileRepository(client);
+    _selectedGroup = widget.group;
     AccentProvider.instance.addListener(_onAccentChanged);
     _load();
   }
@@ -57,6 +60,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reloadToken != widget.reloadToken ||
         oldWidget.group.id != widget.group.id) {
+      _selectedGroup = widget.group;
       _load();
     }
   }
@@ -74,10 +78,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
+      final groups = await _loadVisibleGroups();
+      final selectedGroup = groups.firstWhere(
+        (group) => group.id == _selectedGroup.id,
+        orElse: () => groups.first,
+      );
       final results = await Future.wait([
-        _groupRepo.getGroupMembers(widget.group.id),
-        _paymentRepo.getPaymentsByGroup(widget.group.id),
-        _settingsRepo.getSettingsForGroup(widget.group.id),
+        _groupRepo.getGroupMembers(selectedGroup.id),
+        _paymentRepo.getPaymentsByGroup(selectedGroup.id),
+        _settingsRepo.getSettingsForGroup(selectedGroup.id),
       ]);
 
       final allMembers = results[0] as List<IbadatProfile>;
@@ -86,7 +95,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
 
       // Показываем всех участников группы кроме админа
       final members = allMembers
-          .where((m) => m.id != widget.group.adminId)
+          .where((m) => m.id != selectedGroup.adminId)
           .toList();
 
       final map = <String, List<IbadatPayment>>{};
@@ -95,6 +104,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       }
 
       setState(() {
+        _groups = groups;
+        _selectedGroup = selectedGroup;
         _members = members;
         _paymentsMap = map;
         _settingsMap = settings;
@@ -103,6 +114,32 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     } catch (_) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<List<IbadatGroup>> _loadVisibleGroups() async {
+    if (!widget.profile.isAdmin) return [widget.group];
+
+    final groups = await _groupRepo.getGroupsByAdminIds([widget.profile.id]);
+    final visible = <IbadatGroup>[];
+    final seen = <String>{};
+
+    for (final group in groups) {
+      if (seen.add(group.id)) visible.add(group);
+    }
+    if (seen.add(widget.group.id)) {
+      visible.insert(0, widget.group);
+    }
+
+    return visible.isEmpty ? [widget.group] : visible;
+  }
+
+  Future<void> _selectGroup(IbadatGroup group) async {
+    if (group.id == _selectedGroup.id) return;
+    setState(() {
+      _selectedGroup = group;
+      _isLoading = true;
+    });
+    await _load();
   }
 
   double _totalForMember(String profileId) =>
@@ -296,6 +333,15 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             ),
             const SizedBox(height: 20),
 
+            if (_groups.length > 1) ...[
+              _GroupSelector(
+                groups: _groups,
+                selectedGroupId: _selectedGroup.id,
+                onSelected: _selectGroup,
+              ),
+              const SizedBox(height: 16),
+            ],
+
             Text(
               '👥 ${s.membersTitle}',
               style: const TextStyle(
@@ -337,7 +383,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                       MaterialPageRoute(
                         builder: (_) => MemberPaymentsScreen(
                           member: member,
-                          groupId: widget.group.id,
+                          groupId: _selectedGroup.id,
                           financierId: widget.profile.id,
                         ),
                       ),
@@ -359,6 +405,78 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}М ₸';
     if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}К ₸';
     return '${v.toStringAsFixed(0)} ₸';
+  }
+}
+
+class _GroupSelector extends StatelessWidget {
+  final List<IbadatGroup> groups;
+  final String selectedGroupId;
+  final ValueChanged<IbadatGroup> onSelected;
+
+  const _GroupSelector({
+    required this.groups,
+    required this.selectedGroupId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AccentProvider.instance.current;
+
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: groups.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final group = groups[index];
+          final selected = group.id == selectedGroupId;
+
+          return GestureDetector(
+            onTap: () => onSelected(group),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: selected
+                    ? accent.accent.withValues(alpha: 0.16)
+                    : Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected
+                      ? accent.accent.withValues(alpha: 0.55)
+                      : Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    selected ? '✓' : '👥',
+                    style: TextStyle(
+                      color: selected ? accent.accentLight : Colors.white70,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    group.name,
+                    style: TextStyle(
+                      color: selected
+                          ? accent.accentLight
+                          : const Color(0xFFE2E8F0),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
