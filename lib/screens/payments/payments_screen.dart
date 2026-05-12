@@ -106,21 +106,21 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   double _totalForMember(String profileId) =>
-      (_paymentsMap[profileId] ?? [])
-          .fold(0.0, (s, p) => s + p.amount);
+      (_paymentsMap[profileId] ?? []).fold(0.0, (s, p) => s + p.amount);
 
   bool _paidThisMonth(String profileId) {
     final now = DateTime.now();
     final fixed = _settingsMap[profileId]?.fixedMonthlyAmount ?? 0;
-    final monthPayments = (_paymentsMap[profileId] ?? []).where((p) =>
-        !p.paidExtra &&
-        p.paymentDate != null &&
-        p.paymentDate!.year == now.year &&
-        p.paymentDate!.month == now.month);
+    final monthPayments = (_paymentsMap[profileId] ?? []).where(
+      (p) =>
+          !p.paidExtra &&
+          p.paymentDate != null &&
+          p.paymentDate!.year == now.year &&
+          p.paymentDate!.month == now.month,
+    );
 
     if (fixed > 0) {
-      final monthTotal =
-          monthPayments.fold(0.0, (s, p) => s + p.amount);
+      final monthTotal = monthPayments.fold(0.0, (s, p) => s + p.amount);
       return monthTotal >= fixed;
     }
     return monthPayments.any((p) => p.paidMonth);
@@ -140,9 +140,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             Text(
               '${member.nickname} жойылсын ба?',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -150,11 +151,17 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Жоқ', style: TextStyle(color: Color(0xFF6B7280))),
+            child: const Text(
+              'Жоқ',
+              style: TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Жою', style: TextStyle(color: Color(0xFFEF4444))),
+            child: const Text(
+              'Жою',
+              style: TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
@@ -165,16 +172,16 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Қате: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Қате: $e')));
     }
   }
 
-  double get _grandTotal => _members.fold(
-      0.0, (s, m) => s + _totalForMember(m.id));
+  double get _grandTotal =>
+      _members.fold(0.0, (s, m) => s + _totalForMember(m.id));
 
-  int get _paidCount =>
-      _members.where((m) => _paidThisMonth(m.id)).length;
+  int get _paidCount => _members.where((m) => _paidThisMonth(m.id)).length;
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +200,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(40),
@@ -223,9 +233,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   child: Text(
                     s.paymentsTitle,
                     style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -257,9 +268,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     ),
                   ),
                   Container(
-                      width: 1,
-                      height: 40,
-                      color: Colors.white.withValues(alpha: 0.15)),
+                    width: 1,
+                    height: 40,
+                    color: Colors.white.withValues(alpha: 0.15),
+                  ),
                   Expanded(
                     child: _SummaryItem(
                       emoji: '✅',
@@ -268,9 +280,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     ),
                   ),
                   Container(
-                      width: 1,
-                      height: 40,
-                      color: Colors.white.withValues(alpha: 0.15)),
+                    width: 1,
+                    height: 40,
+                    color: Colors.white.withValues(alpha: 0.15),
+                  ),
                   Expanded(
                     child: _SummaryItem(
                       emoji: '💰',
@@ -286,9 +299,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             Text(
               '👥 ${s.membersTitle}',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 10),
 
@@ -296,8 +310,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.all(32),
-                  child: Text(s.noMembers,
-                      style: const TextStyle(color: Color(0xFF64748B))),
+                  child: Text(
+                    s.noMembers,
+                    style: const TextStyle(color: Color(0xFF64748B)),
+                  ),
                 ),
               )
             else
@@ -307,8 +323,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 final paid = _paidThisMonth(member.id);
                 final total = _totalForMember(member.id);
                 final count = (_paymentsMap[member.id] ?? []).length;
-                final fixed =
-                    _settingsMap[member.id]?.fixedMonthlyAmount ?? 0;
+                final fixed = _settingsMap[member.id]?.fixedMonthlyAmount ?? 0;
                 return _MemberPaymentTile(
                   member: member,
                   index: idx,
@@ -329,7 +344,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                     );
                     _load();
                   },
-                  onDelete: count == 0 && member.role == 'user' ? () => _deleteMember(member) : null,
+                  onDelete: count == 0 && member.role == 'user'
+                      ? () => _deleteMember(member)
+                      : null,
                 );
               }),
           ],
@@ -350,8 +367,11 @@ class _SummaryItem extends StatelessWidget {
   final String label;
   final String value;
 
-  const _SummaryItem(
-      {required this.emoji, required this.label, required this.value});
+  const _SummaryItem({
+    required this.emoji,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -359,13 +379,21 @@ class _SummaryItem extends StatelessWidget {
       children: [
         Text(emoji, style: const TextStyle(fontSize: 18)),
         const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 16)),
-        Text(label,
-            style: TextStyle(color: AccentProvider.instance.current.accentLight, fontSize: 10)),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: AccentProvider.instance.current.accentLight,
+            fontSize: 10,
+          ),
+        ),
       ],
     );
   }
@@ -381,17 +409,6 @@ class _MemberPaymentTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onDelete;
 
-  static const _colors = [
-    Color(0xFF6366F1),
-    Color(0xFF0EA5E9),
-    Color(0xFF10B981),
-    Color(0xFFF59E0B),
-    Color(0xFFEC4899),
-    Color(0xFF8B5CF6),
-    Color(0xFFEF4444),
-    Color(0xFF14B8A6),
-  ];
-
   const _MemberPaymentTile({
     required this.member,
     required this.index,
@@ -405,7 +422,8 @@ class _MemberPaymentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _colors[index % _colors.length];
+    final accent = AccentProvider.instance.current;
+    final color = accent.accent;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -422,19 +440,22 @@ class _MemberPaymentTile extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [
-                  color.withValues(alpha: 0.4),
-                  color.withValues(alpha: 0.2),
-                ]),
+                gradient: LinearGradient(
+                  colors: [
+                    color.withValues(alpha: 0.4),
+                    color.withValues(alpha: 0.2),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Center(
                 child: Text(
                   member.nickname[0].toUpperCase(),
                   style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16),
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
                 ),
               ),
             ),
@@ -443,23 +464,27 @@ class _MemberPaymentTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(member.nickname,
-                      style: const TextStyle(
-                          color: Color(0xFFE2E8F0),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14)),
+                  Text(
+                    member.nickname,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     '$paymentCount ${S.of(context).paymentUnit} · ${totalPaid.toStringAsFixed(0)} ₸',
                     style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 11),
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
                   ),
                   if (fixedMonthlyAmount > 0) ...[
                     const SizedBox(height: 2),
                     Text(
                       '${S.of(context).fixedAmountLabel}: ${fixedMonthlyAmount.toStringAsFixed(0)} ₸',
-                      style: const TextStyle(
-                          color: Color(0xFF6366F1), fontSize: 10),
+                      style: TextStyle(color: accent.accentLight, fontSize: 10),
                     ),
                   ],
                 ],
@@ -470,7 +495,9 @@ class _MemberPaymentTile extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: paidThisMonth
                         ? const Color(0xFF10B981).withValues(alpha: 0.12)
@@ -478,7 +505,9 @@ class _MemberPaymentTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    paidThisMonth ? S.of(context).paidLabel : S.of(context).unpaidLabel,
+                    paidThisMonth
+                        ? S.of(context).paidLabel
+                        : S.of(context).unpaidLabel,
                     style: TextStyle(
                       color: paidThisMonth
                           ? const Color(0xFF10B981)
@@ -492,18 +521,25 @@ class _MemberPaymentTile extends StatelessWidget {
                 if (onDelete != null)
                   IconButton(
                     onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline,
-                        color: Color(0xFFEF4444), size: 18),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Color(0xFFEF4444),
+                      size: 18,
+                    ),
                     style: IconButton.styleFrom(
-                      backgroundColor:
-                          const Color(0xFFEF4444).withValues(alpha: 0.1),
+                      backgroundColor: const Color(
+                        0xFFEF4444,
+                      ).withValues(alpha: 0.1),
                       minimumSize: const Size(32, 32),
                       padding: EdgeInsets.zero,
                     ),
                   )
                 else
-                  const Icon(Icons.chevron_right,
-                      color: Color(0xFF475569), size: 16),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF475569),
+                    size: 16,
+                  ),
               ],
             ),
           ],

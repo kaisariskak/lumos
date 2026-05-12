@@ -13,6 +13,7 @@ import '../../repositories/ibadat_group_repository.dart';
 import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
+import '../../theme/accent_provider.dart';
 import '../../utils/week_utils.dart';
 import '../../widgets/ring_indicator.dart';
 import '../detail/detail_screen.dart';
@@ -439,15 +440,14 @@ class HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current.accent;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
-            )
+          ? Center(child: CircularProgressIndicator(color: accent))
           : RefreshIndicator(
               onRefresh: _loadData,
-              color: const Color(0xFF6366F1),
+              color: accent,
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 56, 16, 80),
                 children: [
@@ -466,6 +466,7 @@ class HomeScreenState extends State<HomeScreen> {
   // ── Header ──────────────────────────────────────────────────────────────────
 
   Widget _buildHeader(AppStrings s) {
+    final accent = AccentProvider.instance.current;
     return Row(
       children: [
         Expanded(
@@ -493,8 +494,8 @@ class HomeScreenState extends State<HomeScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+              gradient: LinearGradient(
+                colors: [accent.accentLight, accent.accentDark],
               ),
               borderRadius: BorderRadius.circular(20),
             ),
@@ -528,6 +529,7 @@ class HomeScreenState extends State<HomeScreen> {
       // personal reports that need to be visible here.
       Builder(
         builder: (context) {
+          final accent = AccentProvider.instance.current;
           final sec = _sections.isEmpty
               ? null
               : _sections.firstWhere(
@@ -589,14 +591,12 @@ class HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFF6366F1).withValues(alpha: 0.15),
-                    const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                    accent.accent.withValues(alpha: 0.15),
+                    accent.gradientMid.withValues(alpha: 0.26),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: accent.accent.withValues(alpha: 0.3)),
               ),
               child: Column(
                 children: [
@@ -607,8 +607,8 @@ class HomeScreenState extends State<HomeScreen> {
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                          gradient: LinearGradient(
+                            colors: [accent.accentLight, accent.accentDark],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
@@ -641,8 +641,8 @@ class HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 2),
                             Text(
                               '👑 ${s.groupAdminLabel}',
-                              style: const TextStyle(
-                                color: Color(0xFFA5B4FC),
+                              style: TextStyle(
+                                color: accent.accentLight,
                                 fontSize: 12,
                               ),
                             ),
@@ -708,7 +708,7 @@ class HomeScreenState extends State<HomeScreen> {
                           icon: Icon(
                             Icons.chevron_left,
                             color: pidx < periods.length - 1
-                                ? const Color(0xFFA5B4FC)
+                                ? accent.accentLight
                                 : const Color(0xFF334155),
                           ),
                           padding: EdgeInsets.zero,
@@ -735,7 +735,7 @@ class HomeScreenState extends State<HomeScreen> {
                           icon: Icon(
                             Icons.chevron_right,
                             color: pidx > 0
-                                ? const Color(0xFFA5B4FC)
+                                ? accent.accentLight
                                 : const Color(0xFF334155),
                           ),
                           padding: EdgeInsets.zero,
@@ -787,6 +787,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildGroupSection(_GroupSection section, AppStrings s) {
+    final accent = AccentProvider.instance.current;
     final totalMembers = section.members.length;
     final allScores = section.members
         .map((m) => _calcScore(m.id, section.monthlyReports, section.metrics))
@@ -815,14 +816,12 @@ class HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  const Color(0xFF6366F1).withValues(alpha: 0.1),
-                  const Color(0xFF8B5CF6).withValues(alpha: 0.06),
+                  accent.accent.withValues(alpha: 0.1),
+                  accent.gradientMid.withValues(alpha: 0.22),
                 ],
               ),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF6366F1).withValues(alpha: 0.2),
-              ),
+              border: Border.all(color: accent.accent.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -981,6 +980,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPeriodNav(_GroupSection section, AppStrings s) {
+    final accentLight = AccentProvider.instance.current.accentLight;
     final idx = section.periodIdx.clamp(0, section.periods.length - 1);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1002,9 +1002,7 @@ class HomeScreenState extends State<HomeScreen> {
                 : null,
             icon: Icon(
               Icons.chevron_left,
-              color: idx > 0
-                  ? const Color(0xFFA5B4FC)
-                  : const Color(0xFF334155),
+              color: idx > 0 ? accentLight : const Color(0xFF334155),
             ),
           ),
           Column(
@@ -1034,7 +1032,7 @@ class HomeScreenState extends State<HomeScreen> {
             icon: Icon(
               Icons.chevron_right,
               color: idx < section.periods.length - 1
-                  ? const Color(0xFFA5B4FC)
+                  ? accentLight
                   : const Color(0xFF334155),
             ),
           ),
@@ -1046,6 +1044,7 @@ class HomeScreenState extends State<HomeScreen> {
   // ── User view: single group, only own report ─────────────────────────────────
 
   List<Widget> _buildUserContent(AppStrings s) {
+    final accent = AccentProvider.instance.current;
     final me = _userMembers.where((m) => m.id == widget.profile.id).toList();
     final score = me.isEmpty
         ? 0.0
@@ -1065,11 +1064,9 @@ class HomeScreenState extends State<HomeScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+            color: accent.accent.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(40),
-            border: Border.all(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: accent.accent.withValues(alpha: 0.2)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1078,8 +1075,8 @@ class HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 6),
               Text(
                 widget.group!.name,
-                style: const TextStyle(
-                  color: Color(0xFFA5B4FC),
+                style: TextStyle(
+                  color: accent.accentLight,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -1117,7 +1114,7 @@ class HomeScreenState extends State<HomeScreen> {
                     icon: Icon(
                       Icons.chevron_left,
                       color: _userPeriodIdx > 0
-                          ? const Color(0xFFA5B4FC)
+                          ? accent.accentLight
                           : const Color(0xFF334155),
                     ),
                   ),
@@ -1158,7 +1155,7 @@ class HomeScreenState extends State<HomeScreen> {
                     icon: Icon(
                       Icons.chevron_right,
                       color: _userPeriodIdx < _userPeriods.length - 1
-                          ? const Color(0xFFA5B4FC)
+                          ? accent.accentLight
                           : const Color(0xFF334155),
                     ),
                   ),
@@ -1169,10 +1166,7 @@ class HomeScreenState extends State<HomeScreen> {
                 children: [
                   IconButton(
                     onPressed: _prevMonth,
-                    icon: const Icon(
-                      Icons.chevron_left,
-                      color: Color(0xFFA5B4FC),
-                    ),
+                    icon: Icon(Icons.chevron_left, color: accent.accentLight),
                   ),
                   Text(
                     WeekUtils.monthLabel(_viewMonth, _viewYear),
@@ -1196,7 +1190,7 @@ class HomeScreenState extends State<HomeScreen> {
                           (_viewYear < DateTime.now().year ||
                               (_viewYear == DateTime.now().year &&
                                   _viewMonth < DateTime.now().month))
-                          ? const Color(0xFFA5B4FC)
+                          ? accent.accentLight
                           : const Color(0xFF334155),
                     ),
                   ),
@@ -1290,6 +1284,7 @@ class _MemberTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     final catColor = metrics.isNotEmpty
         ? metrics[rank % metrics.length].color
         : _fallbackRankColors[rank % _fallbackRankColors.length];
@@ -1310,7 +1305,7 @@ class _MemberTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isMe
-              ? const Color(0xFF6366F1).withValues(alpha: 0.3)
+              ? accent.accent.withValues(alpha: 0.3)
               : rank == 0
               ? const Color(0xFFFBBF24).withValues(alpha: 0.2)
               : Colors.white.withValues(alpha: 0.06),
@@ -1404,13 +1399,13 @@ class _MemberTile extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                          color: accent.accent.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           s.youLabel,
-                          style: const TextStyle(
-                            color: Color(0xFFA5B4FC),
+                          style: TextStyle(
+                            color: accent.accentLight,
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1460,6 +1455,7 @@ class _GroupProgressBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     final pct = (score * 100).round();
     String milestone;
     String milestoneIcon;
@@ -1484,7 +1480,7 @@ class _GroupProgressBar extends StatelessWidget {
         ? const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF34D399)])
         : pct >= 40
         ? const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)])
-        : const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF818CF8)]);
+        : LinearGradient(colors: [accent.accentDark, accent.accentLight]);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1492,14 +1488,12 @@ class _GroupProgressBar extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF6366F1).withValues(alpha: 0.08),
-            const Color(0xFF8B5CF6).withValues(alpha: 0.05),
+            accent.accent.withValues(alpha: 0.08),
+            accent.gradientMid.withValues(alpha: 0.18),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFF6366F1).withValues(alpha: 0.15),
-        ),
+        border: Border.all(color: accent.accent.withValues(alpha: 0.15)),
       ),
       child: Column(
         children: [
@@ -1572,8 +1566,8 @@ class _GroupProgressBar extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             milestone,
-            style: const TextStyle(
-              color: Color(0xFFA5B4FC),
+            style: TextStyle(
+              color: accent.accentLight,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -1676,6 +1670,7 @@ class _AdminReportRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = AccentProvider.instance.current;
     if (report == null) {
       return Center(
         child: Text(
@@ -1739,10 +1734,7 @@ class _AdminReportRow extends StatelessWidget {
             RingIndicator(value: score, size: 52, strokeWidth: 5),
             if (_hasPointMetrics(metrics)) ...[
               const SizedBox(height: 5),
-              _TotalPointsChip(
-                points: totalPoints,
-                color: const Color(0xFFA5B4FC),
-              ),
+              _TotalPointsChip(points: totalPoints, color: accent.accentLight),
             ],
           ],
         ),

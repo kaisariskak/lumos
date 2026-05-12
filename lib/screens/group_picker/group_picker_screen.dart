@@ -53,7 +53,9 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
         final all = await _groupRepo.getAllGroups();
         groups = all.where((g) => g.adminId == widget.profile.id).toList();
       } else if (widget.profile.currentGroupId != null) {
-        final group = await _groupRepo.getGroupById(widget.profile.currentGroupId!);
+        final group = await _groupRepo.getGroupById(
+          widget.profile.currentGroupId!,
+        );
         groups = group != null ? [group] : [];
         if (group != null) {
           members = await _groupRepo.getGroupMembers(group.id);
@@ -79,9 +81,9 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
       widget.onGroupSelected();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Қосылу қатесі: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Қосылу қатесі: $e')));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -90,19 +92,24 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0F172A), Color(0xFF1E1B4B), Color(0xFF0F172A)],
-            stops: [0.0, 0.5, 1.0],
+            colors: [
+              const Color(0xFF0F172A),
+              accent.gradientMid,
+              const Color(0xFF0F172A),
+            ],
+            stops: const [0.0, 0.5, 1.0],
           ),
         ),
         child: SafeArea(
           child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: AccentProvider.instance.current.accent))
+              ? Center(child: CircularProgressIndicator(color: accent.accent))
               : SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
                   child: Column(
@@ -115,17 +122,32 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
                           child: GestureDetector(
                             onTap: widget.onBack,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.1),
+                                ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.chevron_left, color: Color(0xFF94A3B8), size: 20),
-                                  Text(s.back, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
+                                  const Icon(
+                                    Icons.chevron_left,
+                                    color: Color(0xFF94A3B8),
+                                    size: 20,
+                                  ),
+                                  Text(
+                                    s.back,
+                                    style: const TextStyle(
+                                      color: Color(0xFF94A3B8),
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -178,13 +200,15 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        ...(_groups.map((g) => _GroupCard(
-                              group: g,
-                              isCurrent: widget.profile.currentGroupId == g.id,
-                              isSaving: _isSaving,
-                              canSwitch: widget.profile.isAdmin,
-                              onJoin: () => _joinGroup(g),
-                            ))),
+                        ...(_groups.map(
+                          (g) => _GroupCard(
+                            group: g,
+                            isCurrent: widget.profile.currentGroupId == g.id,
+                            isSaving: _isSaving,
+                            canSwitch: widget.profile.isAdmin,
+                            onJoin: () => _joinGroup(g),
+                          ),
+                        )),
                         const SizedBox(height: 24),
                       ],
 
@@ -199,10 +223,12 @@ class _GroupPickerScreenState extends State<GroupPickerScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        ..._members.map((m) => _MemberCard(
-                              member: m,
-                              isMe: m.id == widget.profile.id,
-                            )),
+                        ..._members.map(
+                          (m) => _MemberCard(
+                            member: m,
+                            isMe: m.id == widget.profile.id,
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -258,7 +284,9 @@ class _GroupCard extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Center(child: Text('👥', style: TextStyle(fontSize: 22))),
+          child: const Center(
+            child: Text('👥', style: TextStyle(fontSize: 22)),
+          ),
         ),
         title: Text(
           group.name,
@@ -274,7 +302,10 @@ class _GroupCard extends StatelessWidget {
         ),
         trailing: isCurrent
             ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: accent.accent.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
@@ -289,12 +320,15 @@ class _GroupCard extends StatelessWidget {
                 ),
               )
             : canSwitch
-                ? IconButton(
-                    onPressed: isSaving ? null : onJoin,
-                    icon: Icon(Icons.arrow_forward_ios,
-                        color: accent.accent, size: 18),
-                  )
-                : null,
+            ? IconButton(
+                onPressed: isSaving ? null : onJoin,
+                icon: Icon(
+                  Icons.arrow_forward_ios,
+                  color: accent.accent,
+                  size: 18,
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -368,7 +402,9 @@ class _MemberCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  member.role == 'admin' ? S.of(context).tabAdmin : S.of(context).memberRoleLabel,
+                  member.role == 'admin'
+                      ? S.of(context).tabAdmin
+                      : S.of(context).memberRoleLabel,
                   style: const TextStyle(
                     color: Color(0xFF64748B),
                     fontSize: 11,

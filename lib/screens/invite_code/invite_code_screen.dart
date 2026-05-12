@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../l10n/app_strings.dart';
 import '../../models/invite_code.dart';
 import '../../repositories/invite_code_repository.dart';
+import '../../theme/accent_provider.dart';
 
 /// Guard screen shown after Google Sign-In when the user has no profile
 /// or no group yet. The user must enter a valid invite code to proceed.
@@ -81,6 +82,7 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: SafeArea(
@@ -95,8 +97,8 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                    gradient: LinearGradient(
+                      colors: [accent.accentLight, accent.accentDark],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -129,7 +131,9 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
                     TextInputFormatter.withFunction((oldValue, newValue) {
-                      return newValue.copyWith(text: newValue.text.toUpperCase());
+                      return newValue.copyWith(
+                        text: newValue.text.toUpperCase(),
+                      );
                     }),
                   ],
                   style: const TextStyle(
@@ -156,11 +160,12 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(
-                          color: Color(0xFF6366F1), width: 1.5),
+                      borderSide: BorderSide(color: accent.accent, width: 1.5),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 18),
+                      horizontal: 20,
+                      vertical: 18,
+                    ),
                   ),
                   onSubmitted: (_) => _submit(),
                 ),
@@ -171,12 +176,15 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Text(
                       _error!,
@@ -196,13 +204,15 @@ class _InviteCodeScreenState extends State<InviteCodeScreen> {
                   child: ElevatedButton(
                     onPressed: _loading ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4F46E5),
+                      backgroundColor: accent.accent,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor:
-                          const Color(0xFF4F46E5).withValues(alpha: 0.5),
+                      disabledBackgroundColor: accent.accent.withValues(
+                        alpha: 0.5,
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                     child: _loading
                         ? const SizedBox(

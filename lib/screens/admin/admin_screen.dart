@@ -21,6 +21,20 @@ import '../../reporting/report_progress.dart';
 import '../../services/pin_service.dart';
 import '../pin/pin_screen.dart';
 
+class _AdminPalette {
+  static const bgTop = Color(0xFF101820);
+  static const bgMid = Color(0xFF132B2B);
+  static const bgBottom = Color(0xFF1F2430);
+  static const panel = Color(0xE61B2528);
+  static const field = Color(0xFF111A1D);
+  static const line = Color(0x244ADE80);
+  static const lineStrong = Color(0x5534D399);
+  static const text = Color(0xFFF8FAFC);
+  static const muted = Color(0xFF9DB5AB);
+  static const gold = Color(0xFFF6C453);
+  static const emerald = Color(0xFF22C55E);
+}
+
 class AdminScreen extends StatefulWidget {
   final IbadatProfile profile;
   final IbadatGroup? group;
@@ -62,9 +76,9 @@ class _AdminScreenState extends State<AdminScreen> {
   List<IbadatProfile> _members = [];
 
   List<IbadatGroup> _myGroups = []; // группы этого админа
-  IbadatGroup? _localGroup;         // локально после создания
+  IbadatGroup? _localGroup; // локально после создания
   IbadatGroup? _adminSelectedGroup; // единый выбор группы для всех операций
-  InviteCode? _adminSelectedCode;   // активный код выбранной группы
+  InviteCode? _adminSelectedCode; // активный код выбранной группы
 
   bool _isLoading = true;
   bool _hasPin = false;
@@ -146,20 +160,26 @@ class _AdminScreenState extends State<AdminScreen> {
     try {
       if (_isSuperAdmin) {
         // Super-admin: only see groups belonging to their own admins
-        final admins = await _profileRepo.getAdminsBySuperAdmin(widget.profile.id);
+        final admins = await _profileRepo.getAdminsBySuperAdmin(
+          widget.profile.id,
+        );
         final adminIds = admins.map((a) => a.id).toList();
         final groups = await _groupRepo.getGroupsByAdminIds(adminIds);
-        final ungrouped = await _profileRepo.getUngroupedUsersByAdminIds(adminIds);
+        final ungrouped = await _profileRepo.getUngroupedUsersByAdminIds(
+          adminIds,
+        );
         final Map<String, List<IbadatProfile>> membersMap = {};
         final Map<String, List<IbadatPeriod>> periodsMap = {};
-        await Future.wait(groups.map((g) async {
-          final results = await Future.wait([
-            _groupRepo.getGroupMembers(g.id, adminId: g.adminId),
-            _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
-          ]);
-          membersMap[g.id] = results[0] as List<IbadatProfile>;
-          periodsMap[g.id] = results[1] as List<IbadatPeriod>;
-        }));
+        await Future.wait(
+          groups.map((g) async {
+            final results = await Future.wait([
+              _groupRepo.getGroupMembers(g.id, adminId: g.adminId),
+              _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
+            ]);
+            membersMap[g.id] = results[0] as List<IbadatProfile>;
+            periodsMap[g.id] = results[1] as List<IbadatPeriod>;
+          }),
+        );
         setState(() {
           _myAdmins = admins;
           _ungroupedUsers = ungrouped;
@@ -168,25 +188,35 @@ class _AdminScreenState extends State<AdminScreen> {
           _groupPeriods = periodsMap;
           final prevId = _selectedGroup?.id;
           _selectedGroup = prevId != null
-              ? groups.firstWhere((g) => g.id == prevId,
-                  orElse: () => groups.isNotEmpty ? groups.first : groups.first)
-              : groups.isNotEmpty ? groups.first : null;
+              ? groups.firstWhere(
+                  (g) => g.id == prevId,
+                  orElse: () => groups.isNotEmpty ? groups.first : groups.first,
+                )
+              : groups.isNotEmpty
+              ? groups.first
+              : null;
           _isLoading = false;
         });
       } else if (widget.profile.isAdmin) {
         // Загружаем все группы этого админа
-        final myGroups = await _groupRepo.getGroupsByAdminIds([widget.profile.id]);
+        final myGroups = await _groupRepo.getGroupsByAdminIds([
+          widget.profile.id,
+        ]);
         final Map<String, List<IbadatProfile>> membersMap = {};
         final Map<String, List<IbadatPeriod>> periodsMap = {};
-        await Future.wait(myGroups.map((g) async {
-          final results = await Future.wait([
-            _groupRepo.getGroupMembers(g.id),
-            _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
-          ]);
-          final all = results[0] as List<IbadatProfile>;
-          membersMap[g.id] = all.where((m) => m.id != widget.profile.id).toList();
-          periodsMap[g.id] = results[1] as List<IbadatPeriod>;
-        }));
+        await Future.wait(
+          myGroups.map((g) async {
+            final results = await Future.wait([
+              _groupRepo.getGroupMembers(g.id),
+              _periodRepo.getPeriodsForGroup(g.id, includePersonal: false),
+            ]);
+            final all = results[0] as List<IbadatProfile>;
+            membersMap[g.id] = all
+                .where((m) => m.id != widget.profile.id)
+                .toList();
+            periodsMap[g.id] = results[1] as List<IbadatPeriod>;
+          }),
+        );
         // Load admin's personal periods (is_personal = true) and personal metrics.
         final adminResults = await Future.wait([
           _periodRepo.getPersonalPeriodsForAdmin(widget.profile.id),
@@ -204,13 +234,21 @@ class _AdminScreenState extends State<AdminScreen> {
           _adminMetrics = personalMetrics;
           // Для совместимости оставляем _members для текущей группы
           final currentGroup = widget.group ?? _localGroup;
-          _members = currentGroup != null ? (membersMap[currentGroup.id] ?? []) : [];
+          _members = currentGroup != null
+              ? (membersMap[currentGroup.id] ?? [])
+              : [];
           _isLoading = false;
           final prevId = _adminSelectedGroup?.id;
           _adminSelectedGroup = prevId != null
-              ? myGroups.firstWhere((g) => g.id == prevId,
-                  orElse: () => myGroups.isNotEmpty ? myGroups.first : _adminSelectedGroup!)
-              : myGroups.isNotEmpty ? myGroups.first : null;
+              ? myGroups.firstWhere(
+                  (g) => g.id == prevId,
+                  orElse: () => myGroups.isNotEmpty
+                      ? myGroups.first
+                      : _adminSelectedGroup!,
+                )
+              : myGroups.isNotEmpty
+              ? myGroups.first
+              : null;
         });
       } else {
         setState(() => _isLoading = false);
@@ -218,11 +256,14 @@ class _AdminScreenState extends State<AdminScreen> {
       // Load active invite codes (auto-generate if expired)
       if (_isSuperAdmin) {
         _activeAdminCode = await _codeRepo.getOrCreateActiveAdminCode(
-            createdBy: widget.profile.id);
+          createdBy: widget.profile.id,
+        );
       }
 
       // Load code and metrics for initially selected group (admin)
-      if (widget.profile.isAdmin && !_isSuperAdmin && _adminSelectedGroup != null) {
+      if (widget.profile.isAdmin &&
+          !_isSuperAdmin &&
+          _adminSelectedGroup != null) {
         final selectedGroupId = _adminSelectedGroup!.id;
         final requestVersion = ++_groupMetricsLoadVersion;
         final results = await Future.wait([
@@ -248,9 +289,9 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _generateUserCode() async {
     final groupId = (widget.group ?? _localGroup)?.id;
     if (groupId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(S.of(context).createNewGroup)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(S.of(context).createNewGroup)));
       return;
     }
     setState(() => _generatingCode = true);
@@ -266,9 +307,9 @@ class _AdminScreenState extends State<AdminScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _generatingCode = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${S.of(context).error}: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -285,9 +326,9 @@ class _AdminScreenState extends State<AdminScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _generatingCode = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${S.of(context).error}: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -307,9 +348,9 @@ class _AdminScreenState extends State<AdminScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _generatingCode = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${S.of(context).error}: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -345,8 +386,9 @@ class _AdminScreenState extends State<AdminScreen> {
           _adminSelectedGroup?.id != g.id) {
         return;
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -362,18 +404,25 @@ class _AdminScreenState extends State<AdminScreen> {
           user.copyWith(currentGroupId: groupId),
         ];
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${user.nickname} топқа қосылды ✅'),
-        backgroundColor: const Color(0xFF059669),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${user.nickname} топқа қосылды ✅'),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
-  Future<void> _assignGroupAdmin(IbadatProfile member, IbadatGroup group) async {
-    final isAdmin = member.role == 'admin';
+  Future<void> _assignGroupAdmin(
+    IbadatProfile member,
+    IbadatGroup group,
+  ) async {
+    final isGroupAdmin = group.adminId == member.id;
     final s = S.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -383,16 +432,20 @@ class _AdminScreenState extends State<AdminScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(isAdmin ? '⬇️' : '👑', style: const TextStyle(fontSize: 40)),
+            Text(
+              isGroupAdmin ? '⬇️' : '👑',
+              style: const TextStyle(fontSize: 40),
+            ),
             const SizedBox(height: 12),
             Text(
-              isAdmin
+              isGroupAdmin
                   ? '${member.nickname} ${s.removeAdmin}?'
                   : '${member.nickname} "${group.name}" - ${s.makeAdmin}?',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -400,15 +453,21 @@ class _AdminScreenState extends State<AdminScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(S.of(context).no, style: const TextStyle(color: Color(0xFF6B7280))),
+            child: Text(
+              S.of(context).no,
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(S.of(context).yes,
-                style: TextStyle(
-                    color: isAdmin
-                        ? const Color(0xFF6B7280)
-                        : const Color(0xFFF59E0B))),
+            child: Text(
+              S.of(context).yes,
+              style: TextStyle(
+                color: isGroupAdmin
+                    ? const Color(0xFF6B7280)
+                    : const Color(0xFFF59E0B),
+              ),
+            ),
           ),
         ],
       ),
@@ -416,54 +475,98 @@ class _AdminScreenState extends State<AdminScreen> {
 
     if (confirmed == true) {
       try {
-        if (!isAdmin) {
-          // Demote existing group admin first (enforce one admin per group)
-          final groupMembers =
-              _isSuperAdmin ? (_groupMembers[group.id] ?? []) : _members;
-          for (final m in groupMembers) {
-            if (m.id != member.id && m.role == 'admin') {
-              await _profileRepo.updateRole(m.id, 'user');
+        final demotedProfileIds = <String>{};
+        if (!isGroupAdmin) {
+          final previousAdminIds = <String>{group.adminId};
+          for (final m in _groupMembers[group.id] ?? _members) {
+            if (m.id != member.id && group.adminId == m.id) {
+              previousAdminIds.add(m.id);
+            }
+          }
+          for (final adminId in previousAdminIds.where(
+            (id) => id != member.id,
+          )) {
+            final keepAdminRole = await _hasOtherAdminGroups(
+              adminId,
+              excludingGroupId: group.id,
+            );
+            if (!keepAdminRole) {
+              await _profileRepo.updateRole(adminId, 'user');
+              demotedProfileIds.add(adminId);
             }
           }
         }
-        final newRole = isAdmin ? 'user' : 'admin';
-        await _profileRepo.updateRole(member.id, newRole);
-        // Also update group's admin_id so RLS stays consistent
-        if (!isAdmin) {
+        String? memberRoleOverride;
+        if (isGroupAdmin) {
+          final keepAdminRole = await _hasOtherAdminGroups(
+            member.id,
+            excludingGroupId: group.id,
+          );
+          if (!keepAdminRole) {
+            memberRoleOverride = 'user';
+            await _profileRepo.updateRole(member.id, 'user');
+          }
+        } else if (member.role != 'admin') {
+          memberRoleOverride = 'admin';
+          await _profileRepo.updateRole(member.id, 'admin');
+        }
+        if (!isGroupAdmin) {
           await _groupRepo.updateAdminId(group.id, member.id);
         }
         if (!mounted) return;
         setState(() {
           IbadatProfile applyRole(IbadatProfile m) {
-            if (m.id == member.id) return m.copyWith(role: newRole);
-            if (!isAdmin && m.role == 'admin') return m.copyWith(role: 'user');
+            if (m.id == member.id && memberRoleOverride != null) {
+              return m.copyWith(role: memberRoleOverride);
+            }
+            if (demotedProfileIds.contains(m.id)) {
+              return m.copyWith(role: 'user');
+            }
             return m;
           }
+
           for (final key in _groupMembers.keys) {
             _groupMembers[key] = _groupMembers[key]!.map(applyRole).toList();
           }
           _members = _members.map(applyRole).toList();
-          if (!isAdmin) {
-            _allGroups = _allGroups.map((g) =>
-              g.id == group.id ? g.copyWith(adminId: member.id) : g).toList();
-            _myGroups = _myGroups.map((g) =>
-              g.id == group.id ? g.copyWith(adminId: member.id) : g).toList();
+          if (!isGroupAdmin) {
+            _allGroups = _allGroups
+                .map(
+                  (g) => g.id == group.id ? g.copyWith(adminId: member.id) : g,
+                )
+                .toList();
+            _myGroups = _myGroups
+                .map(
+                  (g) => g.id == group.id ? g.copyWith(adminId: member.id) : g,
+                )
+                .toList();
           }
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isAdmin
-                ? '${member.nickname} ${S.of(context).adminRemoved}'
-                : '${member.nickname} ${S.of(context).adminAssigned}'),
+            content: Text(
+              isGroupAdmin
+                  ? '${member.nickname} ${S.of(context).adminRemoved}'
+                  : '${member.nickname} ${S.of(context).adminAssigned}',
+            ),
             backgroundColor: const Color(0xFF374151),
           ),
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
       }
     }
+  }
+
+  Future<bool> _hasOtherAdminGroups(
+    String profileId, {
+    required String excludingGroupId,
+  }) async {
+    final groups = await _groupRepo.getGroupsByAdminIds([profileId]);
+    return groups.any((group) => group.id != excludingGroupId);
   }
 
   Future<void> _removeMember(IbadatProfile member) async {
@@ -481,9 +584,10 @@ class _AdminScreenState extends State<AdminScreen> {
             Text(
               '${member.nickname} ${s.removeMemberConfirm}',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -491,12 +595,17 @@ class _AdminScreenState extends State<AdminScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(S.of(context).no, style: const TextStyle(color: Color(0xFF6B7280))),
+            child: Text(
+              S.of(context).no,
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(S.of(context).remove,
-                style: const TextStyle(color: Color(0xFFEF4444))),
+            child: Text(
+              S.of(context).remove,
+              style: const TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
@@ -515,13 +624,15 @@ class _AdminScreenState extends State<AdminScreen> {
         widget.onGroupChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(S.of(context).removedFromGroup),
-              backgroundColor: const Color(0xFF374151)),
+            content: Text(S.of(context).removedFromGroup),
+            backgroundColor: const Color(0xFF374151),
+          ),
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
       }
     }
   }
@@ -533,9 +644,12 @@ class _AdminScreenState extends State<AdminScreen> {
       final group = await _groupRepo.createGroup(name, widget.profile.id);
 
       if (_newGroupPeriodStart != null) {
-        final end = _newGroupPeriodEnd ?? _newGroupPeriodStart!.add(const Duration(days: 6));
+        final end =
+            _newGroupPeriodEnd ??
+            _newGroupPeriodStart!.add(const Duration(days: 6));
         final s = _newGroupPeriodStart!;
-        final label = '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
+        final label =
+            '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
         await _periodRepo.createPeriod(
           groupId: group.id,
           label: label,
@@ -573,100 +687,119 @@ class _AdminScreenState extends State<AdminScreen> {
       if (inviteCode != null) {
         await showDialog(
           context: context,
-          builder: (_) => AlertDialog(
-            backgroundColor: const Color(0xFF1E293B),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Text(
-              S.of(context).groupCreated,
-              style: const TextStyle(
-                  color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(group.name,
+          builder: (_) {
+            final accent = AccentProvider.instance.current;
+            return AlertDialog(
+              backgroundColor: const Color(0xFF152A2D),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Text(
+                S.of(context).groupCreated,
+                style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    group.name,
                     style: const TextStyle(
-                        color: Color(0xFF94A3B8), fontSize: 13)),
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.04),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color:
-                            const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                      color: Color(0xFF94A3B8),
+                      fontSize: 13,
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      const Text('🔑', style: TextStyle(fontSize: 20)),
-                      const SizedBox(height: 6),
-                      Text(
-                        inviteCode!.code,
-                        style: const TextStyle(
-                          color: Color(0xFFE2E8F0),
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 4,
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _AdminPalette.field,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: accent.accent.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('🔑', style: TextStyle(fontSize: 20)),
+                        const SizedBox(height: 6),
+                        Text(
+                          inviteCode!.code,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 4,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        S.of(context).generateUserCode,
-                        style: const TextStyle(
-                            color: Color(0xFF64748B), fontSize: 11),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          S.of(context).generateUserCode,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: inviteCode!.code));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(S.of(context).codeCopied)),
+                    );
+                  },
+                  child: Text(
+                    S.of(context).codeLabel,
+                    style: TextStyle(color: accent.accentLight),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent.accentDark,
+                    foregroundColor: _AdminPalette.text,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('OK'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Clipboard.setData(
-                      ClipboardData(text: inviteCode!.code));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(S.of(context).codeCopied)),
-                  );
-                },
-                child: Text(S.of(context).codeLabel,
-                    style: const TextStyle(color: Color(0xFFA5B4FC))),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6366F1),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
+            );
+          },
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(S.of(context).groupCreated),
-              backgroundColor: const Color(0xFF059669)),
+            content: Text(S.of(context).groupCreated),
+            backgroundColor: const Color(0xFF059669),
+          ),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
   Future<void> _createPeriod(String groupId) async {
     if (_periodStart == null) return;
     final end = _periodEnd ?? _periodStart!.add(const Duration(days: 6));
-    final label = '${_periodStart!.day}.${_periodStart!.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
+    final label =
+        '${_periodStart!.day}.${_periodStart!.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
     try {
       await _periodRepo.createPeriod(
         groupId: groupId,
@@ -690,17 +823,20 @@ class _AdminScreenState extends State<AdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
   Future<void> _createAdminPersonalPeriod() async {
     if (_adminPeriodStart == null) return;
     final groupId = _adminSelectedGroup?.id ?? widget.profile.currentGroupId;
-    final end = _adminPeriodEnd ?? _adminPeriodStart!.add(const Duration(days: 6));
+    final end =
+        _adminPeriodEnd ?? _adminPeriodStart!.add(const Duration(days: 6));
     final s = _adminPeriodStart!;
-    final label = '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
+    final label =
+        '${s.day}.${s.month.toString().padLeft(2, '0')} – ${end.day}.${end.month.toString().padLeft(2, '0')}';
     try {
       await _periodRepo.createPeriod(
         groupId: groupId,
@@ -717,14 +853,17 @@ class _AdminScreenState extends State<AdminScreen> {
       await _loadData();
       widget.onGroupChanged?.call();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(S.of(context).periodCreated),
-        backgroundColor: const Color(0xFF059669),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(S.of(context).periodCreated),
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -739,11 +878,13 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
       if (hasReports) {
         setState(() => _deletingPeriodId = null);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(S.of(context).periodHasReports),
-          backgroundColor: const Color(0xFFEF4444),
-          duration: const Duration(seconds: 5),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(S.of(context).periodHasReports),
+            backgroundColor: const Color(0xFFEF4444),
+            duration: const Duration(seconds: 5),
+          ),
+        );
         return;
       }
       await _periodRepo.deletePeriod(period.id);
@@ -757,8 +898,9 @@ class _AdminScreenState extends State<AdminScreen> {
       widget.onGroupChanged?.call();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     } finally {
       if (mounted) setState(() => _deletingPeriodId = null);
     }
@@ -776,14 +918,19 @@ class _AdminScreenState extends State<AdminScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
   // ── PERIODS BOTTOM SHEET ──────────────────────────────────────────────────
 
-  void _showPeriodsSheet(String groupId, List<IbadatPeriod> periods, AppStrings s) {
+  void _showPeriodsSheet(
+    String groupId,
+    List<IbadatPeriod> periods,
+    AppStrings s,
+  ) {
     DateTime? sheetStart;
     DateTime? sheetEnd;
 
@@ -792,210 +939,269 @@ class _AdminScreenState extends State<AdminScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setSheet) {
-          return Container(
-            padding: EdgeInsets.fromLTRB(
-                20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2),
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                16,
+                20,
+                MediaQuery.of(ctx).viewInsets.bottom + 32,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E293B),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
 
-                // Title
-                Row(children: [
-                  const Text('📅', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 8),
-                  Text(s.periods,
-                      style: const TextStyle(
+                  // Title
+                  Row(
+                    children: [
+                      const Text('📅', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Text(
+                        s.periods,
+                        style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w700,
-                          fontSize: 16)),
-                ]),
-                const SizedBox(height: 16),
-
-                // Existing periods
-                if (periods.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(s.selectStartDate,
-                        style: const TextStyle(
-                            color: Color(0xFF64748B), fontSize: 13)),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: periods.length,
-                      itemBuilder: (_, i) {
-                        final p = periods[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: const Color(0xFF0EA5E9)
-                                      .withValues(alpha: 0.25)),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(p.label,
-                                          style: const TextStyle(
-                                              color: Color(0xFFE2E8F0),
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14)),
-                                      Text(
-                                          p.dateRangeLabelLocalized(
-                                              s.languageCode),
-                                          style: const TextStyle(
-                                              color: Color(0xFF64748B),
-                                              fontSize: 12)),
-                                    ],
-                                  ),
-                                ),
-                                _deletingPeriodId == p.id
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Color(0xFFEF4444)))
-                                    : IconButton(
-                                        onPressed: () async {
-                                          Navigator.pop(ctx);
-                                          await _tryDeletePeriod(p);
-                                          if (mounted) {
-                                            final updated = _groupPeriods[groupId] ?? [];
-                                            _showPeriodsSheet(groupId, updated, s);
-                                          }
-                                        },
-                                        icon: const Icon(Icons.delete_outline,
-                                            color: Color(0xFFEF4444), size: 20),
-                                        tooltip: s.delete,
-                                        style: IconButton.styleFrom(
-                                          backgroundColor: const Color(0xFFEF4444)
-                                              .withValues(alpha: 0.1),
-                                        ),
-                                      ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-
-                const Divider(color: Color(0xFF334155), height: 24),
-
-                // Add new period
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setSheet(() {
-                        sheetStart = picked;
-                        sheetEnd = picked.add(const Duration(days: 6));
-                      });
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.1)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Text('📅', style: TextStyle(fontSize: 14)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: sheetStart == null
-                              ? Text(s.selectStartDate,
-                                  style: const TextStyle(
-                                      color: Color(0xFF475569), fontSize: 13))
-                              : Text(
-                                  '${sheetStart!.day}.${sheetStart!.month.toString().padLeft(2, '0')}.${sheetStart!.year}  →  ${sheetEnd!.day}.${sheetEnd!.month.toString().padLeft(2, '0')}.${sheetEnd!.year}  (7 ${s.unitLabel('күн')})',
-                                  style: const TextStyle(
-                                      color: Color(0xFFE2E8F0), fontSize: 13)),
+                          fontSize: 16,
                         ),
-                        if (sheetStart != null)
-                          GestureDetector(
-                            onTap: () =>
-                                setSheet(() { sheetStart = null; sheetEnd = null; }),
-                            child: const Icon(Icons.close,
-                                size: 16, color: Color(0xFF64748B)),
-                          ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: sheetStart == null
-                        ? null
-                        : () async {
-                            setState(() {
-                              _periodStart = sheetStart;
-                              _periodEnd = sheetEnd;
-                            });
-                            Navigator.pop(ctx);
-                            await _createPeriod(groupId);
-                            if (mounted) {
-                              final updated = _groupPeriods[groupId] ?? [];
-                              _showPeriodsSheet(groupId, updated, s);
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0EA5E9),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    child: Text(s.createPeriod,
+                  const SizedBox(height: 16),
+
+                  // Existing periods
+                  if (periods.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        s.selectStartDate,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
+                          color: Color(0xFF64748B),
+                          fontSize: 13,
+                        ),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: periods.length,
+                        itemBuilder: (_, i) {
+                          final p = periods[i];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF0EA5E9,
+                                ).withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF0EA5E9,
+                                  ).withValues(alpha: 0.25),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          p.label,
+                                          style: const TextStyle(
+                                            color: Color(0xFFE2E8F0),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          p.dateRangeLabelLocalized(
+                                            s.languageCode,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _deletingPeriodId == p.id
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Color(0xFFEF4444),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          onPressed: () async {
+                                            Navigator.pop(ctx);
+                                            await _tryDeletePeriod(p);
+                                            if (mounted) {
+                                              final updated =
+                                                  _groupPeriods[groupId] ?? [];
+                                              _showPeriodsSheet(
+                                                groupId,
+                                                updated,
+                                                s,
+                                              );
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: Color(0xFFEF4444),
+                                            size: 20,
+                                          ),
+                                          tooltip: s.delete,
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFFEF4444,
+                                            ).withValues(alpha: 0.1),
+                                          ),
+                                        ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                  const Divider(color: Color(0xFF334155), height: 24),
+
+                  // Add new period
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2024),
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setSheet(() {
+                          sheetStart = picked;
+                          sheetEnd = picked.add(const Duration(days: 6));
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text('📅', style: TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: sheetStart == null
+                                ? Text(
+                                    s.selectStartDate,
+                                    style: const TextStyle(
+                                      color: Color(0xFF475569),
+                                      fontSize: 13,
+                                    ),
+                                  )
+                                : Text(
+                                    '${sheetStart!.day}.${sheetStart!.month.toString().padLeft(2, '0')}.${sheetStart!.year}  →  ${sheetEnd!.day}.${sheetEnd!.month.toString().padLeft(2, '0')}.${sheetEnd!.year}  (7 ${s.unitLabel('күн')})',
+                                    style: const TextStyle(
+                                      color: Color(0xFFE2E8F0),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                          ),
+                          if (sheetStart != null)
+                            GestureDetector(
+                              onTap: () => setSheet(() {
+                                sheetStart = null;
+                                sheetEnd = null;
+                              }),
+                              child: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        });
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: sheetStart == null
+                          ? null
+                          : () async {
+                              setState(() {
+                                _periodStart = sheetStart;
+                                _periodEnd = sheetEnd;
+                              });
+                              Navigator.pop(ctx);
+                              await _createPeriod(groupId);
+                              if (mounted) {
+                                final updated = _groupPeriods[groupId] ?? [];
+                                _showPeriodsSheet(groupId, updated, s);
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0EA5E9),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        s.createPeriod,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -1004,23 +1210,44 @@ class _AdminScreenState extends State<AdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 56, 16, 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 20),
-          if (_isLoading)
-            const Center(
-                child: CircularProgressIndicator(color: Color(0xFF6366F1)))
-          else if (_isSuperAdmin)
-            ..._buildSuperAdminContent()
-          else if (widget.profile.isAdmin)
-            ..._buildGroupAdminContent()
-          else
-            const SizedBox.shrink(),
-        ],
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _AdminPalette.bgTop,
+            _AdminPalette.bgMid,
+            _AdminPalette.bgBottom,
+          ],
+        ),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 56, 16, 100),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 22),
+                if (_isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      color: _AdminPalette.emerald,
+                    ),
+                  )
+                else if (_isSuperAdmin)
+                  ..._buildSuperAdminContent()
+                else if (widget.profile.isAdmin)
+                  ..._buildGroupAdminContent()
+                else
+                  const SizedBox.shrink(),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1030,25 +1257,53 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Column(
         children: [
           Container(
+            width: 70,
+            height: 70,
+            decoration: BoxDecoration(
+              color: const Color(0xFF152A2D),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _AdminPalette.lineStrong),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x3322C55E),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.admin_panel_settings_rounded,
+              color: _AdminPalette.gold,
+              size: 34,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+              color: _AdminPalette.gold.withValues(alpha: 0.11),
               borderRadius: BorderRadius.circular(40),
               border: Border.all(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2)),
+                color: _AdminPalette.gold.withValues(alpha: 0.28),
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_isSuperAdmin ? '🌟' : '👑',
-                    style: const TextStyle(fontSize: 14)),
+                Icon(
+                  _isSuperAdmin
+                      ? Icons.workspace_premium_rounded
+                      : Icons.verified_user_rounded,
+                  color: _AdminPalette.gold,
+                  size: 15,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   _isSuperAdmin
                       ? '${widget.profile.nickname} · ${S.of(context).superAdminLabel}'
                       : '${widget.profile.nickname} · ${S.of(context).groupAdminLabel}',
                   style: const TextStyle(
-                    color: Color(0xFFFCD34D),
+                    color: _AdminPalette.gold,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1057,16 +1312,13 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          ShaderMask(
-            shaderCallback: (b) => const LinearGradient(
-              colors: [Color(0xFFFCD34D), Color(0xFFF59E0B)],
-            ).createShader(b),
-            child: Text(
-              S.of(context).adminTitle,
-              style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white),
+          Text(
+            S.of(context).adminTitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _AdminPalette.text,
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -1125,7 +1377,9 @@ class _AdminScreenState extends State<AdminScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.2)),
+        border: Border.all(
+          color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1138,64 +1392,79 @@ class _AdminScreenState extends State<AdminScreen> {
               Text(
                 s.myAdminsTitle,
                 style: const TextStyle(
-                    color: Color(0xFFFCD34D),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14),
+                  color: Color(0xFFFCD34D),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           if (_myAdmins.isEmpty)
-            Text(s.noAdmins,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13))
+            Text(
+              s.noAdmins,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            )
           else
-            ..._myAdmins.map((admin) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            admin.nickname[0].toUpperCase(),
-                            style: const TextStyle(
-                                color: Color(0xFFFCD34D),
-                                fontWeight: FontWeight.w700),
+            ..._myAdmins.map(
+              (admin) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Center(
+                        child: Text(
+                          admin.nickname[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFFFCD34D),
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(admin.nickname,
-                                style: const TextStyle(
-                                    color: Color(0xFFE2E8F0),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13)),
-                          ],
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            admin.nickname,
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        '👑 admin',
+                        style: TextStyle(
+                          color: Color(0xFFFCD34D),
+                          fontSize: 10,
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text('👑 admin',
-                            style: TextStyle(
-                                color: Color(0xFFFCD34D), fontSize: 10)),
-                      ),
-                    ],
-                  ),
-                )),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1206,7 +1475,9 @@ class _AdminScreenState extends State<AdminScreen> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.2)),
+        border: Border.all(
+          color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1219,9 +1490,10 @@ class _AdminScreenState extends State<AdminScreen> {
               Text(
                 S.of(context).ungroupedUsers,
                 style: TextStyle(
-                    color: Color(0xFFFCA5A5),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14),
+                  color: Color(0xFFFCA5A5),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
@@ -1231,77 +1503,103 @@ class _AdminScreenState extends State<AdminScreen> {
             style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
           ),
           const SizedBox(height: 12),
-          ..._ungroupedUsers.map((user) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(16),
+          ..._ungroupedUsers.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFFEF4444,
+                          ).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Center(
+                          child: Text(
+                            user.nickname[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Color(0xFFFCA5A5),
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          child: Center(
-                            child: Text(
-                              user.nickname[0].toUpperCase(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.nickname,
                               style: const TextStyle(
-                                  color: Color(0xFFFCA5A5),
-                                  fontWeight: FontWeight.w700),
+                                color: Color(0xFFE2E8F0),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(user.nickname,
-                                  style: const TextStyle(
-                                      color: Color(0xFFE2E8F0),
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_allGroups.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: _allGroups.map((group) => GestureDetector(
-                          onTap: () => _reassignUser(user, group.id),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF059669).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: const Color(0xFF059669).withValues(alpha: 0.3)),
-                            ),
-                            child: Text('➕ ${group.name}',
-                                style: const TextStyle(
-                                    color: Color(0xFF6EE7B7), fontSize: 11)),
-                          ),
-                        )).toList(),
                       ),
                     ],
+                  ),
+                  if (_allGroups.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: _allGroups
+                          .map(
+                            (group) => GestureDetector(
+                              onTap: () => _reassignUser(user, group.id),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF059669,
+                                  ).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF059669,
+                                    ).withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Text(
+                                  '➕ ${group.name}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF6EE7B7),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
                   ],
-                ),
-              )),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildGroupCard(IbadatGroup group, List<IbadatProfile> members,
-      {bool isSuperAdminView = true}) {
+  Widget _buildGroupCard(
+    IbadatGroup group,
+    List<IbadatProfile> members, {
+    bool isSuperAdminView = true,
+  }) {
     final isExpanded = _expandedGroups.contains(group.id);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1331,25 +1629,31 @@ class _AdminScreenState extends State<AdminScreen> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [
-                        const Color(0xFF6366F1).withValues(alpha: 0.3),
-                        const Color(0xFF8B5CF6).withValues(alpha: 0.2),
-                      ]),
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF6366F1).withValues(alpha: 0.3),
+                          const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Center(
-                        child: Text('👥', style: TextStyle(fontSize: 18))),
+                      child: Text('👥', style: TextStyle(fontSize: 18)),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(group.name,
-                            style: const TextStyle(
-                                color: Color(0xFFE2E8F0),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15)),
+                        Text(
+                          group.name,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
                         GestureDetector(
                           onTap: () {
                             Clipboard.setData(ClipboardData(text: group.code));
@@ -1357,28 +1661,40 @@ class _AdminScreenState extends State<AdminScreen> {
                               SnackBar(content: Text(S.of(context).codeCopied)),
                             );
                           },
-                          child: Text('${S.of(context).codeLabel}: ${group.code}  📋',
-                              style: const TextStyle(
-                                  color: Color(0xFFA5B4FC), fontSize: 11)),
+                          child: Text(
+                            '${S.of(context).codeLabel}: ${group.code}  📋',
+                            style: const TextStyle(
+                              color: Color(0xFFA5B4FC),
+                              fontSize: 11,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF6366F1).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text('${members.length} ${S.of(context).memberCount}',
-                        style: const TextStyle(
-                            color: Color(0xFFA5B4FC),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '${members.length} ${S.of(context).memberCount}',
+                      style: const TextStyle(
+                        color: Color(0xFFA5B4FC),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Icon(
-                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    isExpanded
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
                     color: const Color(0xFF64748B),
                     size: 20,
                   ),
@@ -1391,8 +1707,13 @@ class _AdminScreenState extends State<AdminScreen> {
             if (members.isEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(S.of(context).noMembers,
-                    style: const TextStyle(color: Color(0xFF475569), fontSize: 12)),
+                child: Text(
+                  S.of(context).noMembers,
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 12,
+                  ),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1407,13 +1728,21 @@ class _AdminScreenState extends State<AdminScreen> {
                       side: const BorderSide(color: Color(0xFFEF4444)),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
               ),
             ] else ...[
-              ...members.indexed.map((e) => _buildMemberTile(e.$2, group, isSuperAdmin: isSuperAdminView, index: e.$1)),
+              ...members.indexed.map(
+                (e) => _buildMemberTile(
+                  e.$2,
+                  group,
+                  isSuperAdmin: isSuperAdminView,
+                  index: e.$1,
+                ),
+              ),
               const SizedBox(height: 8),
             ],
           ],
@@ -1436,9 +1765,10 @@ class _AdminScreenState extends State<AdminScreen> {
             Text(
               '"${group.name}" ${S.of(context).deleteGroupConfirm}',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1446,11 +1776,17 @@ class _AdminScreenState extends State<AdminScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(S.of(context).no, style: const TextStyle(color: Color(0xFF6B7280))),
+            child: Text(
+              S.of(context).no,
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(S.of(context).delete, style: const TextStyle(color: Color(0xFFEF4444))),
+            child: Text(
+              S.of(context).delete,
+              style: const TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
@@ -1460,7 +1796,8 @@ class _AdminScreenState extends State<AdminScreen> {
       try {
         await _groupRepo.deleteGroup(group.id);
         // Если удалили текущую группу — сбросить профиль
-        final isCurrentGroup = group.id == (widget.group?.id ?? _localGroup?.id);
+        final isCurrentGroup =
+            group.id == (widget.group?.id ?? _localGroup?.id);
         if (isCurrentGroup) {
           await _profileRepo.updateCurrentGroup(widget.profile.id, null);
           setState(() => _localGroup = null);
@@ -1490,8 +1827,9 @@ class _AdminScreenState extends State<AdminScreen> {
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
       }
     }
   }
@@ -1507,14 +1845,16 @@ class _AdminScreenState extends State<AdminScreen> {
 
       // Все карточки групп
       if (hasGroups)
-        ..._myGroups.expand((g) => [
-          _buildGroupCard(
-            g,
-            _groupMembers[g.id] ?? [],
-            isSuperAdminView: false,
-          ),
-          const SizedBox(height: 16),
-        ]),
+        ..._myGroups.expand(
+          (g) => [
+            _buildGroupCard(
+              g,
+              _groupMembers[g.id] ?? [],
+              isSuperAdminView: false,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
 
       // ── Одна карточка: выбор группы + период + код + показатели ──
       if (hasGroups) _buildGroupOperationsCard(),
@@ -1537,6 +1877,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildInviteCodeCard({required bool isAdmin}) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     final activeCode = isAdmin ? _activeAdminCode : _activeUserCode;
     final expiresAt = activeCode?.expiresAt;
     final expiresLabel = expiresAt != null
@@ -1545,10 +1886,9 @@ class _AdminScreenState extends State<AdminScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: _AdminPalette.panel,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.25)),
+        border: Border.all(color: _AdminPalette.line),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1560,10 +1900,11 @@ class _AdminScreenState extends State<AdminScreen> {
               const SizedBox(width: 8),
               Text(
                 isAdmin ? s.generateAdminCode : s.generateUserCode,
-                style: const TextStyle(
-                    color: Color(0xFFA5B4FC),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14),
+                style: TextStyle(
+                  color: accent.accentLight,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
@@ -1575,10 +1916,11 @@ class _AdminScreenState extends State<AdminScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: _AdminPalette.field,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                  color: accent.accent.withValues(alpha: 0.35),
+                ),
               ),
               child: Column(
                 children: [
@@ -1595,7 +1937,9 @@ class _AdminScreenState extends State<AdminScreen> {
                   Text(
                     '${s.codeExpiresIn}: $expiresLabel',
                     style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 11),
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
                   ),
                 ],
               ),
@@ -1607,20 +1951,22 @@ class _AdminScreenState extends State<AdminScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: activeCode.code));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(s.codeCopied)),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(s.codeCopied)));
                     },
                     icon: const Icon(Icons.copy, size: 15),
-                    label: Text(s.codeLabel,
-                        style: const TextStyle(fontSize: 13)),
+                    label: Text(
+                      s.codeLabel,
+                      style: const TextStyle(fontSize: 13),
+                    ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFA5B4FC),
-                      side: const BorderSide(
-                          color: Color(0xFF6366F1), width: 1),
+                      foregroundColor: accent.accentLight,
+                      side: BorderSide(color: accent.accent, width: 1),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -1631,29 +1977,38 @@ class _AdminScreenState extends State<AdminScreen> {
                         ? null
                         : (isAdmin ? _generateAdminCode : _generateUserCode),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4F46E5),
-                      foregroundColor: Colors.white,
+                      backgroundColor: accent.accentDark,
+                      foregroundColor: _AdminPalette.text,
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     child: _generatingCode
                         ? const SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Text('↻',
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            '↻',
                             style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.w700)),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                   ),
                 ),
               ],
             ),
           ] else ...[
-            Text(s.noActiveCode,
-                style: const TextStyle(
-                    color: Color(0xFF64748B), fontSize: 13)),
+            Text(
+              s.noActiveCode,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            ),
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -1666,18 +2021,22 @@ class _AdminScreenState extends State<AdminScreen> {
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.add, size: 16),
                 label: Text(
                   isAdmin ? s.generateAdminCode : s.generateUserCode,
                   style: const TextStyle(fontSize: 13),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
-                  foregroundColor: Colors.white,
+                  backgroundColor: accent.accentDark,
+                  foregroundColor: _AdminPalette.text,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -1700,9 +2059,14 @@ class _AdminScreenState extends State<AdminScreen> {
     Color(0xFF14B8A6), // teal
   ];
 
-  Widget _buildMemberTile(IbadatProfile m, IbadatGroup group,
-      {required bool isSuperAdmin, int index = 0}) {
+  Widget _buildMemberTile(
+    IbadatProfile m,
+    IbadatGroup group, {
+    required bool isSuperAdmin,
+    int index = 0,
+  }) {
     final isSelf = m.id == widget.profile.id;
+    final isGroupAdmin = group.adminId == m.id;
     final tileColor = _memberColors[index % _memberColors.length];
     return Container(
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -1745,14 +2109,17 @@ class _AdminScreenState extends State<AdminScreen> {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(m.nickname,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Color(0xFFE2E8F0),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13)),
+                      child: Text(
+                        m.nickname,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
-                    if (m.role == 'admin') ...[
+                    if (isGroupAdmin) ...[
                       const SizedBox(width: 4),
                       const Text('👑', style: TextStyle(fontSize: 11)),
                     ],
@@ -1766,98 +2133,129 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ),
           PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert,
-                  color: Color(0xFF94A3B8), size: 20),
-              color: const Color(0xFF1E293B),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.08)),
-              ),
-              itemBuilder: (ctx) {
-                final s = S.of(ctx);
-                return [
-                  // Admin toggle: super-admin can only change others; group-admin can change anyone incl. themselves
-                  if (!isSuperAdmin || !isSelf)
-                    PopupMenuItem(
-                      value: 'admin',
-                      child: Row(children: [
-                        Text(m.role == 'admin' ? '⬇️' : '👑',
-                            style: const TextStyle(fontSize: 14)),
+            icon: const Icon(
+              Icons.more_vert,
+              color: Color(0xFF94A3B8),
+              size: 20,
+            ),
+            color: const Color(0xFF1E293B),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            itemBuilder: (ctx) {
+              final s = S.of(ctx);
+              return [
+                // Admin toggle: super-admin can only change others; group-admin can change anyone incl. themselves
+                if (!isSuperAdmin || !isSelf)
+                  PopupMenuItem(
+                    value: 'admin',
+                    child: Row(
+                      children: [
+                        Text(
+                          isGroupAdmin ? '⬇️' : '👑',
+                          style: const TextStyle(fontSize: 14),
+                        ),
                         const SizedBox(width: 10),
                         Text(
-                          m.role == 'admin' ? s.removeAdmin : s.makeAdmin,
+                          isGroupAdmin ? s.removeAdmin : s.makeAdmin,
                           style: const TextStyle(
-                              color: Color(0xFFFCD34D), fontSize: 13),
+                            color: Color(0xFFFCD34D),
+                            fontSize: 13,
+                          ),
                         ),
-                      ]),
+                      ],
                     ),
-                  // Financier: anyone can be assigned, including self
-                  PopupMenuItem(
-                    value: 'financier',
-                    child: Row(children: [
-                      const Text('💼',
-                          style: TextStyle(fontSize: 14)),
+                  ),
+                // Financier: anyone can be assigned, including self
+                PopupMenuItem(
+                  value: 'financier',
+                  child: Row(
+                    children: [
+                      const Text('💼', style: TextStyle(fontSize: 14)),
                       const SizedBox(width: 10),
                       Text(
                         group.financierId == m.id
                             ? s.removeFinancier
                             : s.makeFinancier,
                         style: const TextStyle(
-                            color: Color(0xFF34D399), fontSize: 13),
+                          color: Color(0xFF34D399),
+                          fontSize: 13,
+                        ),
                       ),
-                    ]),
+                    ],
                   ),
-                  if (!isSelf)
-                    PopupMenuItem(
-                      value: 'change_group',
-                      child: Row(children: [
-                        const Icon(Icons.swap_horiz,
-                            color: Color(0xFF38BDF8), size: 16),
+                ),
+                if (!isSelf)
+                  PopupMenuItem(
+                    value: 'change_group',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.swap_horiz,
+                          color: Color(0xFF38BDF8),
+                          size: 16,
+                        ),
                         const SizedBox(width: 10),
-                        Text(s.changeGroup,
-                            style: const TextStyle(
-                                color: Color(0xFF38BDF8), fontSize: 13)),
-                      ]),
+                        Text(
+                          s.changeGroup,
+                          style: const TextStyle(
+                            color: Color(0xFF38BDF8),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                  if (!isSelf)
-                    PopupMenuItem(
-                      value: 'remove',
-                      child: Row(children: [
-                        const Icon(Icons.person_remove_outlined,
-                            color: Color(0xFFEF4444), size: 16),
+                  ),
+                if (!isSelf)
+                  PopupMenuItem(
+                    value: 'remove',
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.person_remove_outlined,
+                          color: Color(0xFFEF4444),
+                          size: 16,
+                        ),
                         const SizedBox(width: 10),
-                        Text(s.removeMember,
-                            style: const TextStyle(
-                                color: Color(0xFFEF4444), fontSize: 13)),
-                      ]),
+                        Text(
+                          s.removeMember,
+                          style: const TextStyle(
+                            color: Color(0xFFEF4444),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                ];
-              },
-              onSelected: (value) {
-                switch (value) {
-                  case 'admin':
-                    _assignGroupAdmin(m, group);
-                  case 'financier':
-                    _assignFinancier(m, group);
-                  case 'change_group':
-                    _changeGroup(m);
-                  case 'remove':
-                    _removeMember(m);
-                }
-              },
-            ),
+                  ),
+              ];
+            },
+            onSelected: (value) {
+              switch (value) {
+                case 'admin':
+                  _assignGroupAdmin(m, group);
+                case 'financier':
+                  _assignFinancier(m, group);
+                case 'change_group':
+                  _changeGroup(m);
+                case 'remove':
+                  _removeMember(m);
+              }
+            },
+          ),
         ],
       ),
     );
   }
 
   Future<void> _changeGroup(IbadatProfile member) async {
-    final otherGroups = _allGroups.where((g) => g.id != member.currentGroupId).toList();
+    final otherGroups = _allGroups
+        .where((g) => g.id != member.currentGroupId)
+        .toList();
     if (otherGroups.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(S.of(context).noOtherGroups)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(S.of(context).noOtherGroups)));
       return;
     }
 
@@ -1868,22 +2266,45 @@ class _AdminScreenState extends State<AdminScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           S.of(context).switchGroupTitle,
-          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 16),
+          style: const TextStyle(
+            color: Color(0xFFE2E8F0),
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: otherGroups.map((g) => ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Text('👥', style: TextStyle(fontSize: 20)),
-            title: Text(g.name, style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 14)),
-            subtitle: Text('${S.of(context).codeLabel}: ${g.code}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-            onTap: () => Navigator.pop(context, g),
-          )).toList(),
+          children: otherGroups
+              .map(
+                (g) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Text('👥', style: TextStyle(fontSize: 20)),
+                  title: Text(
+                    g.name,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 14,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${S.of(context).codeLabel}: ${g.code}',
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(context, g),
+                ),
+              )
+              .toList(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(S.of(context).cancel, style: const TextStyle(color: Color(0xFF6B7280))),
+            child: Text(
+              S.of(context).cancel,
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
         ],
       ),
@@ -1895,15 +2316,25 @@ class _AdminScreenState extends State<AdminScreen> {
       await _profileRepo.updateCurrentGroup(member.id, selected.id);
       if (fromGroupId != null) {
         // Move reports only for periods whose dates match in the new group
-        final fromPeriods = await _periodRepo.getPeriodsForGroup(fromGroupId, includePersonal: false);
-        final toPeriods = await _periodRepo.getPeriodsForGroup(selected.id, includePersonal: false);
+        final fromPeriods = await _periodRepo.getPeriodsForGroup(
+          fromGroupId,
+          includePersonal: false,
+        );
+        final toPeriods = await _periodRepo.getPeriodsForGroup(
+          selected.id,
+          includePersonal: false,
+        );
         bool sameDay(DateTime a, DateTime b) =>
             a.year == b.year && a.month == b.month && a.day == b.day;
 
         for (final fp in fromPeriods) {
-          final match = toPeriods.where((tp) =>
-              sameDay(tp.startDate, fp.startDate) &&
-              sameDay(tp.endDate, fp.endDate)).firstOrNull;
+          final match = toPeriods
+              .where(
+                (tp) =>
+                    sameDay(tp.startDate, fp.startDate) &&
+                    sameDay(tp.endDate, fp.endDate),
+              )
+              .firstOrNull;
           if (match != null) {
             await _reportRepo.moveUserReportsByPeriod(
               userId: member.id,
@@ -1926,13 +2357,17 @@ class _AdminScreenState extends State<AdminScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(S.of(context).memberMovedToGroup(member.nickname, selected.name)),
+          content: Text(
+            S.of(context).memberMovedToGroup(member.nickname, selected.name),
+          ),
           backgroundColor: const Color(0xFF059669),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -1954,9 +2389,10 @@ class _AdminScreenState extends State<AdminScreen> {
                   ? '${member.nickname} ${s.removeFinancier}?'
                   : '${member.nickname} "${group.name}" - ${s.makeFinancier}?',
               style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15),
+                color: Color(0xFFE2E8F0),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1964,15 +2400,21 @@ class _AdminScreenState extends State<AdminScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(S.of(context).no, style: const TextStyle(color: Color(0xFF6B7280))),
+            child: Text(
+              S.of(context).no,
+              style: const TextStyle(color: Color(0xFF6B7280)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(S.of(context).yes,
-                style: TextStyle(
-                    color: isFinancier
-                        ? const Color(0xFF6B7280)
-                        : const Color(0xFF10B981))),
+            child: Text(
+              S.of(context).yes,
+              style: TextStyle(
+                color: isFinancier
+                    ? const Color(0xFF6B7280)
+                    : const Color(0xFF10B981),
+              ),
+            ),
           ),
         ],
       ),
@@ -1981,45 +2423,59 @@ class _AdminScreenState extends State<AdminScreen> {
     if (confirmed == true) {
       try {
         await _groupRepo.updateFinancier(
-            group.id, isFinancier ? null : member.id);
+          group.id,
+          isFinancier ? null : member.id,
+        );
         if (!mounted) return;
         final newFinancierId = isFinancier ? null : member.id;
         setState(() {
-          _allGroups = _allGroups.map((g) => g.id == group.id
-              ? g.copyWith(
-                  financierId: newFinancierId,
-                  clearFinancierId: newFinancierId == null)
-              : g).toList();
-          _myGroups = _myGroups.map((g) => g.id == group.id
-              ? g.copyWith(
-                  financierId: newFinancierId,
-                  clearFinancierId: newFinancierId == null)
-              : g).toList();
+          _allGroups = _allGroups
+              .map(
+                (g) => g.id == group.id
+                    ? g.copyWith(
+                        financierId: newFinancierId,
+                        clearFinancierId: newFinancierId == null,
+                      )
+                    : g,
+              )
+              .toList();
+          _myGroups = _myGroups
+              .map(
+                (g) => g.id == group.id
+                    ? g.copyWith(
+                        financierId: newFinancierId,
+                        clearFinancierId: newFinancierId == null,
+                      )
+                    : g,
+              )
+              .toList();
         });
         widget.onGroupChanged?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(isFinancier
-                ? '${member.nickname} ${S.of(context).financierRemoved}'
-                : '${member.nickname} ${S.of(context).financierAssigned}'),
+            content: Text(
+              isFinancier
+                  ? '${member.nickname} ${S.of(context).financierRemoved}'
+                  : '${member.nickname} ${S.of(context).financierAssigned}',
+            ),
             backgroundColor: const Color(0xFF374151),
           ),
         );
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
       }
     }
   }
-
 
   Widget _buildCentralPeriodsCard() {
     // Exclude admin's personal periods — they are managed separately
     final periods = _selectedGroup != null
         ? (_groupPeriods[_selectedGroup!.id] ?? [])
-            .where((p) => !p.isPersonal)
-            .toList()
+              .where((p) => !p.isPersonal)
+              .toList()
         : <IbadatPeriod>[];
 
     return Container(
@@ -2032,11 +2488,14 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('📅 ${S.of(context).periods}',
-              style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14)),
+          Text(
+            '📅 ${S.of(context).periods}',
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
           const SizedBox(height: 12),
 
           // Group selector
@@ -2053,10 +2512,18 @@ class _AdminScreenState extends State<AdminScreen> {
                   value: _selectedGroup,
                   isExpanded: true,
                   dropdownColor: const Color(0xFF1E293B),
-                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 14),
-                  icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontSize: 14,
+                  ),
+                  icon: const Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Color(0xFF64748B),
+                  ),
                   items: _allGroups
-                      .map((g) => DropdownMenuItem(value: g, child: Text(g.name)))
+                      .map(
+                        (g) => DropdownMenuItem(value: g, child: Text(g.name)),
+                      )
                       .toList(),
                   onChanged: (g) => setState(() {
                     _selectedGroup = g;
@@ -2071,54 +2538,78 @@ class _AdminScreenState extends State<AdminScreen> {
 
           // Existing periods for selected group
           if (_selectedGroup == null)
-            Text(S.of(context).selectGroup,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12))
+            Text(
+              S.of(context).selectGroup,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+            )
           else if (periods.isEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(S.of(context).noPeriods,
-                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+              child: Text(
+                S.of(context).noPeriods,
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
             )
           else
-            ...periods.map((p) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.03),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            ...periods.map(
+              (p) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.03),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
-                  child: Row(
-                    children: [
-                      const Text('📅', style: TextStyle(fontSize: 14)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(p.label,
-                                style: const TextStyle(
-                                    color: Color(0xFFE2E8F0),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13)),
-                            Text(p.dateRangeLabelLocalized(S.of(context).languageCode),
-                                style: const TextStyle(
-                                    color: Color(0xFF64748B), fontSize: 11)),
-                          ],
-                        ),
+                ),
+                child: Row(
+                  children: [
+                    const Text('📅', style: TextStyle(fontSize: 14)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.label,
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            p.dateRangeLabelLocalized(
+                              S.of(context).languageCode,
+                            ),
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        onPressed: () => _deletePeriod(p),
-                        icon: const Icon(Icons.delete_outline,
-                            color: Color(0xFFEF4444), size: 17),
-                        style: IconButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFFEF4444).withValues(alpha: 0.1),
-                        ),
+                    ),
+                    IconButton(
+                      onPressed: () => _deletePeriod(p),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Color(0xFFEF4444),
+                        size: 17,
                       ),
-                    ],
-                  ),
-                )),
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(
+                          0xFFEF4444,
+                        ).withValues(alpha: 0.1),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           if (_selectedGroup != null) ...[
             const Divider(color: Color(0xFF1E293B)),
@@ -2141,11 +2632,16 @@ class _AdminScreenState extends State<AdminScreen> {
                 }
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -2153,13 +2649,19 @@ class _AdminScreenState extends State<AdminScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _periodStart == null
-                          ? Text(S.of(context).selectStartDate,
+                          ? Text(
+                              S.of(context).selectStartDate,
                               style: const TextStyle(
-                                  color: Color(0xFF475569), fontSize: 13))
+                                color: Color(0xFF475569),
+                                fontSize: 13,
+                              ),
+                            )
                           : Text(
                               '${_periodStart!.day}.${_periodStart!.month.toString().padLeft(2, '0')}.${_periodStart!.year}  →  ${_periodEnd!.day}.${_periodEnd!.month.toString().padLeft(2, '0')}.${_periodEnd!.year}  (7 күн)',
                               style: const TextStyle(
-                                  color: Color(0xFFE2E8F0), fontSize: 13),
+                                color: Color(0xFFE2E8F0),
+                                fontSize: 13,
+                              ),
                             ),
                     ),
                   ],
@@ -2179,11 +2681,17 @@ class _AdminScreenState extends State<AdminScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   elevation: 0,
                 ),
-                child: Text(S.of(context).createPeriod,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                child: Text(
+                  S.of(context).createPeriod,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
               ),
             ),
           ],
@@ -2194,6 +2702,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildGroupOperationsCard() {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     if (_adminSelectedGroup == null) return const SizedBox.shrink();
     // Exclude admin's personal periods — they are managed separately
     final periods = (_groupPeriods[_adminSelectedGroup!.id] ?? [])
@@ -2204,48 +2713,63 @@ class _AdminScreenState extends State<AdminScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: _AdminPalette.panel,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
+        border: Border.all(color: _AdminPalette.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           // ── Выбор группы (только если групп больше одной) ─────────
           if (_myGroups.length > 1) ...[
-            Row(children: [
-              const Text('🏷️', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 8),
-              Text(s.selectGroup,
-                  style: const TextStyle(
-                      color: Color(0xFFA5B4FC),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13)),
-            ]),
+            Row(
+              children: [
+                const Text('🏷️', style: TextStyle(fontSize: 14)),
+                const SizedBox(width: 8),
+                Text(
+                  s.selectGroup,
+                  style: TextStyle(
+                    color: accent.accentLight,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               initialValue: _adminSelectedGroup!.id,
-              dropdownColor: const Color(0xFF1E293B),
+              dropdownColor: _AdminPalette.field,
               style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 14),
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.04),
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
                 enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
                 focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF6366F1))),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: accent.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
               ),
-              items: _myGroups.map((g) => DropdownMenuItem(
-                value: g.id,
-                child: Text(g.name),
-              )).toList(),
+              items: _myGroups
+                  .map(
+                    (g) => DropdownMenuItem(value: g.id, child: Text(g.name)),
+                  )
+                  .toList(),
               onChanged: (id) {
                 if (id == null) return;
                 _onAdminGroupSelected(_myGroups.firstWhere((g) => g.id == id));
@@ -2265,7 +2789,8 @@ class _AdminScreenState extends State<AdminScreen> {
                 color: const Color(0xFF0EA5E9).withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.2)),
+                  color: const Color(0xFF0EA5E9).withValues(alpha: 0.2),
+                ),
               ),
               child: Row(
                 children: [
@@ -2275,25 +2800,35 @@ class _AdminScreenState extends State<AdminScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(s.periods,
-                            style: const TextStyle(
-                                color: Color(0xFFE2E8F0),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14)),
+                        Text(
+                          s.periods,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                         Text(
                           hasPeriod
-                              ? periods.last.dateRangeLabelLocalized(s.languageCode)
+                              ? periods.last.dateRangeLabelLocalized(
+                                  s.languageCode,
+                                )
                               : s.selectStartDate,
                           style: const TextStyle(
-                              color: Color(0xFF64748B), fontSize: 11),
+                            color: Color(0xFF64748B),
+                            fontSize: 11,
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_ios,
-                      color: Color(0xFF0EA5E9), size: 16),
+                  const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Color(0xFF0EA5E9),
+                    size: 16,
+                  ),
                 ],
               ),
             ),
@@ -2304,15 +2839,20 @@ class _AdminScreenState extends State<AdminScreen> {
           const SizedBox(height: 18),
 
           // ══ 2. КОД ПРИГЛАШЕНИЯ ════════════════════════════════════
-          Row(children: [
-            const Text('🔑', style: TextStyle(fontSize: 15)),
-            const SizedBox(width: 8),
-            Text(s.generateUserCode,
-                style: const TextStyle(
-                    color: Color(0xFFA5B4FC),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14)),
-          ]),
+          Row(
+            children: [
+              const Text('🔑', style: TextStyle(fontSize: 15)),
+              const SizedBox(width: 8),
+              Text(
+                s.generateUserCode,
+                style: TextStyle(
+                  color: accent.accentLight,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
 
           if (_adminSelectedCode != null) ...[
@@ -2320,83 +2860,106 @@ class _AdminScreenState extends State<AdminScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: _AdminPalette.field,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                  color: accent.accent.withValues(alpha: 0.35),
+                ),
               ),
-              child: Column(children: [
-                Text(_adminSelectedCode!.code,
+              child: Column(
+                children: [
+                  Text(
+                    _adminSelectedCode!.code,
                     style: const TextStyle(
-                        color: Color(0xFFE2E8F0),
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 4)),
-                const SizedBox(height: 4),
-                Builder(builder: (_) {
-                  final exp = _adminSelectedCode!.expiresAt;
-                  return Text(
-                    '${s.codeExpiresIn}: ${exp.day.toString().padLeft(2, '0')}.${exp.month.toString().padLeft(2, '0')} ${exp.hour.toString().padLeft(2, '0')}:${exp.minute.toString().padLeft(2, '0')}',
-                    style: const TextStyle(
-                        color: Color(0xFF64748B), fontSize: 11),
-                  );
-                }),
-              ]),
+                      color: Color(0xFFE2E8F0),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Builder(
+                    builder: (_) {
+                      final exp = _adminSelectedCode!.expiresAt;
+                      return Text(
+                        '${s.codeExpiresIn}: ${exp.day.toString().padLeft(2, '0')}.${exp.month.toString().padLeft(2, '0')} ${exp.hour.toString().padLeft(2, '0')}:${exp.minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 10),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(
-                        ClipboardData(text: _adminSelectedCode!.code));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(s.codeCopied)));
-                  },
-                  icon: const Icon(Icons.copy, size: 15),
-                  label: Text(s.codeLabel,
-                      style: const TextStyle(fontSize: 13)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFA5B4FC),
-                    side: const BorderSide(
-                        color: Color(0xFF6366F1), width: 1),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(
+                        ClipboardData(text: _adminSelectedCode!.code),
+                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(s.codeCopied)));
+                    },
+                    icon: const Icon(Icons.copy, size: 15),
+                    label: Text(
+                      s.codeLabel,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: accent.accentLight,
+                      side: BorderSide(color: accent.accent, width: 1),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _generatingCode
-                      ? null
-                      : () =>
-                          _generateCodeForGroup(_adminSelectedGroup!),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4F46E5),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: _generatingCode
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Text('↻',
-                          style: TextStyle(
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _generatingCode
+                        ? null
+                        : () => _generateCodeForGroup(_adminSelectedGroup!),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent.accentDark,
+                      foregroundColor: _AdminPalette.text,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: _generatingCode
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            '↻',
+                            style: TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.w700)),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ] else ...[
-            Text(s.noActiveCode,
-                style: const TextStyle(
-                    color: Color(0xFF64748B), fontSize: 13)),
+            Text(
+              s.noActiveCode,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            ),
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -2409,16 +2972,22 @@ class _AdminScreenState extends State<AdminScreen> {
                         width: 14,
                         height: 14,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.add, size: 16),
-                label: Text(s.generateUserCode,
-                    style: const TextStyle(fontSize: 13)),
+                label: Text(
+                  s.generateUserCode,
+                  style: const TextStyle(fontSize: 13),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
-                  foregroundColor: Colors.white,
+                  backgroundColor: accent.accentDark,
+                  foregroundColor: _AdminPalette.text,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
@@ -2475,8 +3044,11 @@ class _AdminScreenState extends State<AdminScreen> {
             AnimatedRotation(
               turns: _metricsExpanded ? 0.5 : 0,
               duration: const Duration(milliseconds: 200),
-              child: Icon(Icons.keyboard_arrow_down,
-                  color: accentLight, size: 20),
+              child: Icon(
+                Icons.keyboard_arrow_down,
+                color: accentLight,
+                size: 20,
+              ),
             ),
           ],
         ),
@@ -2506,8 +3078,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(14),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -2518,11 +3091,14 @@ class _AdminScreenState extends State<AdminScreen> {
                         color: metric.color.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: metric.color.withValues(alpha: 0.25)),
+                          color: metric.color.withValues(alpha: 0.25),
+                        ),
                       ),
                       child: Center(
-                        child: Text(metric.icon,
-                            style: const TextStyle(fontSize: 18)),
+                        child: Text(
+                          metric.icon,
+                          style: const TextStyle(fontSize: 18),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2551,14 +3127,20 @@ class _AdminScreenState extends State<AdminScreen> {
                     ),
                     IconButton(
                       onPressed: () => _editGroupMetric(metric),
-                      icon: const Icon(Icons.edit_outlined,
-                          color: Color(0xFF6366F1), size: 20),
+                      icon: const Icon(
+                        Icons.edit_outlined,
+                        color: Color(0xFF6366F1),
+                        size: 20,
+                      ),
                       tooltip: 'Изменить',
                     ),
                     IconButton(
                       onPressed: () => _deleteGroupMetric(metric),
-                      icon: const Icon(Icons.delete_outline,
-                          color: Color(0xFFEF4444), size: 20),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Color(0xFFEF4444),
+                        size: 20,
+                      ),
                       tooltip: 'Удалить',
                     ),
                   ],
@@ -2578,7 +3160,8 @@ class _AdminScreenState extends State<AdminScreen> {
               side: BorderSide(color: accent.withValues(alpha: 0.35)),
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -2597,11 +3180,14 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(S.of(context).createNewGroup,
-              style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14)),
+          Text(
+            S.of(context).createNewGroup,
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _newGroupCtrl,
@@ -2613,20 +3199,24 @@ class _AdminScreenState extends State<AdminScreen> {
               fillColor: Colors.white.withValues(alpha: 0.04),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide:
-                    BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.1),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: const BorderSide(color: Color(0xFF6366F1)),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2639,12 +3229,17 @@ class _AdminScreenState extends State<AdminScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 0,
               ),
-              child: Text(S.of(context).create,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15)),
+              child: Text(
+                S.of(context).create,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
             ),
           ),
         ],
@@ -2674,16 +3269,24 @@ class _AdminScreenState extends State<AdminScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(s.myPeriodTitle,
-                      style: const TextStyle(
-                          color: Color(0xFFE2E8F0),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14)),
+                  Text(
+                    s.myPeriodTitle,
+                    style: const TextStyle(
+                      color: Color(0xFFE2E8F0),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                   Text(
                     hasPersonalPeriod
-                        ? _adminPersonalPeriods.last.dateRangeLabelLocalized(s.languageCode)
+                        ? _adminPersonalPeriods.last.dateRangeLabelLocalized(
+                            s.languageCode,
+                          )
                         : s.noPeriods,
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 11,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2707,333 +3310,437 @@ class _AdminScreenState extends State<AdminScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final accent = AccentProvider.instance.current.accent;
-        return StatefulBuilder(builder: (ctx, setSheet) {
-          return Container(
-            padding: EdgeInsets.fromLTRB(
-                20, 16, 20, MediaQuery.of(ctx).viewInsets.bottom + 32),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E293B),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2),
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                16,
+                20,
+                MediaQuery.of(ctx).viewInsets.bottom + 32,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1E293B),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
 
-                Row(children: [
-                  const Text('📋', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 8),
-                  Text(s.myPeriodTitle,
-                      style: const TextStyle(
+                  Row(
+                    children: [
+                      const Text('📋', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Text(
+                        s.myPeriodTitle,
+                        style: const TextStyle(
                           color: Color(0xFFE2E8F0),
                           fontWeight: FontWeight.w700,
-                          fontSize: 16)),
-                ]),
-                const SizedBox(height: 16),
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-                if (_adminPersonalPeriods.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(s.noPeriods,
-                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _adminPersonalPeriods.length,
-                      itemBuilder: (_, i) {
-                        final p = _adminPersonalPeriods[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: accent.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: accent.withValues(alpha: 0.25)),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(p.label,
-                                          style: const TextStyle(
-                                              color: Color(0xFFE2E8F0),
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14)),
-                                      Text(p.dateRangeLabelLocalized(s.languageCode),
-                                          style: const TextStyle(
-                                              color: Color(0xFF64748B), fontSize: 12)),
-                                    ],
-                                  ),
+                  if (_adminPersonalPeriods.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        s.noPeriods,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 13,
+                        ),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _adminPersonalPeriods.length,
+                        itemBuilder: (_, i) {
+                          final p = _adminPersonalPeriods[i];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.25),
                                 ),
-                                _deletingPeriodId == p.id
-                                    ? const SizedBox(
-                                        width: 20, height: 20,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2, color: Color(0xFFEF4444)))
-                                    : IconButton(
-                                        onPressed: () async {
-                                          Navigator.pop(ctx);
-                                          await _tryDeletePeriod(p);
-                                          if (mounted) _showAdminPersonalPeriodsSheet(s);
-                                        },
-                                        icon: const Icon(Icons.delete_outline,
-                                            color: Color(0xFFEF4444), size: 20),
-                                        style: IconButton.styleFrom(
-                                          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          p.label,
+                                          style: const TextStyle(
+                                            color: Color(0xFFE2E8F0),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
                                         ),
-                                      ),
-                              ],
+                                        Text(
+                                          p.dateRangeLabelLocalized(
+                                            s.languageCode,
+                                          ),
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _deletingPeriodId == p.id
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Color(0xFFEF4444),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          onPressed: () async {
+                                            Navigator.pop(ctx);
+                                            await _tryDeletePeriod(p);
+                                            if (mounted) {
+                                              _showAdminPersonalPeriodsSheet(s);
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            color: Color(0xFFEF4444),
+                                            size: 20,
+                                          ),
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFFEF4444,
+                                            ).withValues(alpha: 0.1),
+                                          ),
+                                        ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                  const Divider(color: Color(0xFF334155), height: 24),
+
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setSheet(
+                      () => _adminMetricsExpanded = !_adminMetricsExpanded,
+                    ),
+                    child: Row(
+                      children: [
+                        const Text('📊', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            s.customCatsTitle,
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
                             ),
                           ),
-                        );
-                      },
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            '${_adminMetrics.length}',
+                            style: TextStyle(
+                              color:
+                                  AccentProvider.instance.current.accentLight,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        AnimatedRotation(
+                          turns: _adminMetricsExpanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: Color(0xFF64748B),
+                            size: 20,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
-                const Divider(color: Color(0xFF334155), height: 24),
+                  if (_adminMetricsExpanded) ...[
+                    const SizedBox(height: 10),
 
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setSheet(
-                      () => _adminMetricsExpanded = !_adminMetricsExpanded),
-                  child: Row(children: [
-                    const Text('📊', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(s.customCatsTitle,
+                    if (_adminMetrics.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          s.adminPersonalMetricsHint,
                           style: const TextStyle(
-                              color: Color(0xFFE2E8F0),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15)),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
+                        ),
+                      )
+                    else
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 240),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: _adminMetrics.length,
+                          itemBuilder: (_, i) {
+                            final m = _adminMetrics[i];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.03),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: m.color.withValues(alpha: 0.16),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: m.color.withValues(
+                                            alpha: 0.25,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          m.icon,
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            m.localizedName(s.languageCode),
+                                            style: const TextStyle(
+                                              color: Color(0xFFE2E8F0),
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${m.maxValue} ${s.unitLabel(m.unit)}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF94A3B8),
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: () async {
+                                        await _editAdminMetric(m);
+                                        setSheet(() {});
+                                      },
+                                      icon: const Icon(
+                                        Icons.edit_outlined,
+                                        color: Color(0xFF6366F1),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: () async {
+                                        await _deleteAdminMetric(m);
+                                        setSheet(() {});
+                                      },
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Color(0xFFEF4444),
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      child: Text(
-                        '${_adminMetrics.length}',
-                        style: TextStyle(
-                          color: AccentProvider.instance.current.accentLight,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await _showAddAdminMetricDialog();
+                          setSheet(() {});
+                        },
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(s.customCatAdd),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              AccentProvider.instance.current.accentLight,
+                          side: BorderSide(
+                            color: accent.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    AnimatedRotation(
-                      turns: _adminMetricsExpanded ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(Icons.keyboard_arrow_down,
-                          color: Color(0xFF64748B), size: 20),
-                    ),
-                  ]),
-                ),
+                  ],
 
-                if (_adminMetricsExpanded) ...[
-                  const SizedBox(height: 10),
+                  const Divider(color: Color(0xFF334155), height: 24),
 
-                  if (_adminMetrics.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      s.adminPersonalMetricsHint,
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                    ),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 240),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: _adminMetrics.length,
-                      itemBuilder: (_, i) {
-                        final m = _adminMetrics[i];
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.08)),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: m.color.withValues(alpha: 0.16),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                        color: m.color.withValues(alpha: 0.25)),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: DateTime.now(),
+                        firstDate: DateTime(2024),
+                        lastDate: DateTime(2030),
+                      );
+                      if (picked != null) {
+                        setSheet(() {
+                          sheetStart = picked;
+                          sheetEnd = picked.add(const Duration(days: 6));
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text('📅', style: TextStyle(fontSize: 14)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: sheetStart == null
+                                ? Text(
+                                    s.selectStartDate,
+                                    style: const TextStyle(
+                                      color: Color(0xFF475569),
+                                      fontSize: 13,
+                                    ),
+                                  )
+                                : Text(
+                                    '${sheetStart!.day}.${sheetStart!.month.toString().padLeft(2, '0')}.${sheetStart!.year}  →  ${sheetEnd!.day}.${sheetEnd!.month.toString().padLeft(2, '0')}.${sheetEnd!.year}  (7 ${s.unitLabel('күн')})',
+                                    style: const TextStyle(
+                                      color: Color(0xFFE2E8F0),
+                                      fontSize: 13,
+                                    ),
                                   ),
-                                  child: Center(
-                                    child: Text(m.icon,
-                                        style: const TextStyle(fontSize: 16)),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        m.localizedName(s.languageCode),
-                                        style: const TextStyle(
-                                          color: Color(0xFFE2E8F0),
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '${m.maxValue} ${s.unitLabel(m.unit)}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF94A3B8),
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: () async {
-                                    await _editAdminMetric(m);
-                                    setSheet(() {});
-                                  },
-                                  icon: const Icon(Icons.edit_outlined,
-                                      color: Color(0xFF6366F1), size: 20),
-                                ),
-                                IconButton(
-                                  onPressed: () async {
-                                    await _deleteAdminMetric(m);
-                                    setSheet(() {});
-                                  },
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: Color(0xFFEF4444), size: 20),
-                                ),
-                              ],
-                            ),
                           ),
-                        );
-                      },
+                          if (sheetStart != null)
+                            GestureDetector(
+                              onTap: () => setSheet(() {
+                                sheetStart = null;
+                                sheetEnd = null;
+                              }),
+                              child: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        await _showAddAdminMetricDialog();
-                        setSheet(() {});
-                      },
-                      icon: const Icon(Icons.add, size: 18),
-                      label: Text(s.customCatAdd),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AccentProvider.instance.current.accentLight,
-                        side: BorderSide(color: accent.withValues(alpha: 0.35)),
+                    child: ElevatedButton(
+                      onPressed: sheetStart == null
+                          ? null
+                          : () async {
+                              setState(() {
+                                _adminPeriodStart = sheetStart;
+                                _adminPeriodEnd = sheetEnd;
+                              });
+                              Navigator.pop(ctx);
+                              await _createAdminPersonalPeriod();
+                              if (mounted) _showAdminPersonalPeriodsSheet(s);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        s.createPeriod,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ),
                 ],
-
-                const Divider(color: Color(0xFF334155), height: 24),
-
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2024),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setSheet(() {
-                        sheetStart = picked;
-                        sheetEnd = picked.add(const Duration(days: 6));
-                      });
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.04),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Text('📅', style: TextStyle(fontSize: 14)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: sheetStart == null
-                              ? Text(s.selectStartDate,
-                                  style: const TextStyle(color: Color(0xFF475569), fontSize: 13))
-                              : Text(
-                                  '${sheetStart!.day}.${sheetStart!.month.toString().padLeft(2, '0')}.${sheetStart!.year}  →  ${sheetEnd!.day}.${sheetEnd!.month.toString().padLeft(2, '0')}.${sheetEnd!.year}  (7 ${s.unitLabel('күн')})',
-                                  style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 13)),
-                        ),
-                        if (sheetStart != null)
-                          GestureDetector(
-                            onTap: () => setSheet(() { sheetStart = null; sheetEnd = null; }),
-                            child: const Icon(Icons.close, size: 16, color: Color(0xFF64748B)),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: sheetStart == null
-                        ? null
-                        : () async {
-                            setState(() {
-                              _adminPeriodStart = sheetStart;
-                              _adminPeriodEnd = sheetEnd;
-                            });
-                            Navigator.pop(ctx);
-                            await _createAdminPersonalPeriod();
-                            if (mounted) _showAdminPersonalPeriodsSheet(s);
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 0,
-                    ),
-                    child: Text(s.createPeriod,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        });
+              ),
+            );
+          },
+        );
       },
     );
   }
@@ -3041,31 +3748,11 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget _buildLanguageSwitcher() {
     final s = S.of(context);
     final currentLang = LocaleProvider.instance.value.languageCode;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
+    return _AdminSettingsCard(
+      icon: Icons.language_rounded,
+      title: s.language,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('🌐', style: TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
-              Text(
-                s.language,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -3073,7 +3760,8 @@ class _AdminScreenState extends State<AdminScreen> {
                   label: s.kazakh,
                   flag: '🇰🇿',
                   selected: currentLang == 'kk',
-                  onTap: () => LocaleProvider.instance.setLocale(const Locale('kk')),
+                  onTap: () =>
+                      LocaleProvider.instance.setLocale(const Locale('kk')),
                 ),
               ),
               const SizedBox(width: 10),
@@ -3082,7 +3770,8 @@ class _AdminScreenState extends State<AdminScreen> {
                   label: s.russian,
                   flag: '🇷🇺',
                   selected: currentLang == 'ru',
-                  onTap: () => LocaleProvider.instance.setLocale(const Locale('ru')),
+                  onTap: () =>
+                      LocaleProvider.instance.setLocale(const Locale('ru')),
                 ),
               ),
             ],
@@ -3110,8 +3799,9 @@ class _AdminScreenState extends State<AdminScreen> {
           _adminSelectedGroup?.id != targetGroupId) {
         return;
       }
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -3146,8 +3836,9 @@ class _AdminScreenState extends State<AdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -3173,25 +3864,39 @@ class _AdminScreenState extends State<AdminScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           s.metricDeleteTitle,
-          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: Color(0xFFE2E8F0),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Text(
-          s.metricDeleteConfirm(metric.localizedName(s.languageCode), fromGroup: true),
+          s.metricDeleteConfirm(
+            metric.localizedName(s.languageCode),
+            fromGroup: true,
+          ),
           style: const TextStyle(color: Color(0xFFCBD5E1)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(s.cancel, style: const TextStyle(color: Color(0xFF64748B))),
+            child: Text(
+              s.cancel,
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(s.delete, style: const TextStyle(color: Color(0xFFEF4444))),
+            child: Text(
+              s.delete,
+              style: const TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
     );
-    if (confirmed != true || !mounted || _adminSelectedGroup?.id != metric.groupId) {
+    if (confirmed != true ||
+        !mounted ||
+        _adminSelectedGroup?.id != metric.groupId) {
       return;
     }
     try {
@@ -3206,8 +3911,9 @@ class _AdminScreenState extends State<AdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${S.of(context).error}: $e')));
     }
   }
 
@@ -3227,8 +3933,9 @@ class _AdminScreenState extends State<AdminScreen> {
       await _refreshGroupMetrics(groupId: metric.groupId);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('${s.error}: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${s.error}: $e')));
     }
   }
 
@@ -3242,6 +3949,7 @@ class _AdminScreenState extends State<AdminScreen> {
       builder: (_) => _EditMetricDialog(metric: metric),
     );
   }
+
   int _nextMetricOrderIndex() {
     if (_groupMetrics.isEmpty) return 0;
     final maxOrderIndex = _groupMetrics
@@ -3265,7 +3973,9 @@ class _AdminScreenState extends State<AdminScreen> {
         title: Text(
           title,
           style: const TextStyle(
-              color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+            color: Color(0xFFE2E8F0),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Text(
           message,
@@ -3288,10 +3998,7 @@ class _AdminScreenState extends State<AdminScreen> {
       setState(() => _adminMetrics = metrics);
     } catch (e) {
       if (!mounted) return;
-      await _showAdminNoticeDialog(
-        title: S.of(context).error,
-        message: '$e',
-      );
+      await _showAdminNoticeDialog(title: S.of(context).error, message: '$e');
     }
   }
 
@@ -3318,10 +4025,7 @@ class _AdminScreenState extends State<AdminScreen> {
       await _refreshAdminMetrics();
     } catch (e) {
       if (!mounted) return;
-      await _showAdminNoticeDialog(
-        title: S.of(context).error,
-        message: '$e',
-      );
+      await _showAdminNoticeDialog(title: S.of(context).error, message: '$e');
     }
   }
 
@@ -3347,7 +4051,10 @@ class _AdminScreenState extends State<AdminScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           s.metricDeleteTitle,
-          style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: Color(0xFFE2E8F0),
+            fontWeight: FontWeight.w700,
+          ),
         ),
         content: Text(
           s.metricDeleteConfirm(metric.localizedName(s.languageCode)),
@@ -3356,27 +4063,34 @@ class _AdminScreenState extends State<AdminScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(s.cancel, style: const TextStyle(color: Color(0xFF64748B))),
+            child: Text(
+              s.cancel,
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(s.delete, style: const TextStyle(color: Color(0xFFEF4444))),
+            child: Text(
+              s.delete,
+              style: const TextStyle(color: Color(0xFFEF4444)),
+            ),
           ),
         ],
       ),
     );
     if (confirmed != true || !mounted) return;
     final backup = List<GroupMetric>.from(_adminMetrics);
-    setState(() => _adminMetrics = _adminMetrics.where((m) => m.id != metric.id).toList());
+    setState(
+      () => _adminMetrics = _adminMetrics
+          .where((m) => m.id != metric.id)
+          .toList(),
+    );
     try {
       await _metricRepo.delete(metric.id!);
     } catch (e) {
       if (mounted) setState(() => _adminMetrics = backup);
       if (!mounted) return;
-      await _showAdminNoticeDialog(
-        title: S.of(context).error,
-        message: '$e',
-      );
+      await _showAdminNoticeDialog(title: S.of(context).error, message: '$e');
     }
   }
 
@@ -3398,6 +4112,7 @@ class _AdminScreenState extends State<AdminScreen> {
       await _showAdminNoticeDialog(title: s.error, message: '$e');
     }
   }
+
   int _nextAdminMetricOrderIndex() {
     if (_adminMetrics.isEmpty) return 0;
     final maxOrderIndex = _adminMetrics
@@ -3411,7 +4126,8 @@ class _AdminScreenState extends State<AdminScreen> {
     for (final color in _metricColorPalette) {
       if (!used.contains(color)) return color;
     }
-    return _metricColorPalette[_adminMetrics.length % _metricColorPalette.length];
+    return _metricColorPalette[_adminMetrics.length %
+        _metricColorPalette.length];
   }
 
   static const List<int> _metricColorPalette = [
@@ -3434,84 +4150,41 @@ class _AdminScreenState extends State<AdminScreen> {
     for (final color in _metricColorPalette) {
       if (!used.contains(color)) return color;
     }
-    return _metricColorPalette[_groupMetrics.length % _metricColorPalette.length];
+    return _metricColorPalette[_groupMetrics.length %
+        _metricColorPalette.length];
   }
 
   Widget _buildColorPicker() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
+    return _AdminSettingsCard(
+      icon: Icons.palette_rounded,
+      title: S.of(context).colorTheme,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('🎨', style: TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
-              Text(
-                S.of(context).colorTheme,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           ValueListenableBuilder<int>(
             valueListenable: AccentProvider.instance,
-            builder: (_, selected, _) => Row(
-              children: List.generate(appAccents.length, (i) {
-                final theme = appAccents[i];
-                final isSelected = selected == i;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => AccentProvider.instance.setAccent(i),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: EdgeInsets.only(right: i < appAccents.length - 1 ? 8 : 0),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: theme.accent.withValues(alpha: isSelected ? 0.2 : 0.07),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: theme.accent.withValues(alpha: isSelected ? 0.7 : 0.2),
-                          width: isSelected ? 2 : 1,
-                        ),
+            builder: (_, selected, _) => LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 420 ? 3 : 2;
+                final spacing = 10.0;
+                final width =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: List.generate(appAccents.length, (i) {
+                    final theme = appAccents[i];
+                    final isSelected = selected == i;
+                    return SizedBox(
+                      width: width,
+                      child: _AdminAccentTile(
+                        theme: theme,
+                        selected: isSelected,
+                        onTap: () => AccentProvider.instance.setAccent(i),
                       ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: theme.accent,
-                              shape: BoxShape.circle,
-                            ),
-                            child: isSelected
-                                ? const Icon(Icons.check, color: Colors.white, size: 14)
-                                : null,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            theme.name,
-                            style: TextStyle(
-                              color: isSelected ? theme.accentLight : const Color(0xFF64748B),
-                              fontSize: 11,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                    );
+                  }),
                 );
-              }),
+              },
             ),
           ),
         ],
@@ -3523,43 +4196,33 @@ class _AdminScreenState extends State<AdminScreen> {
     final s = S.of(context);
     final accent = AccentProvider.instance.current.accent;
     final accentLight = AccentProvider.instance.current.accentLight;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+    return _AdminSettingsCard(
+      icon: Icons.lock_rounded,
+      title: s.pinCode,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: _hasPin
+              ? accent.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: _hasPin
+                ? accent.withValues(alpha: 0.28)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Text(
+          _hasPin ? s.pinEnabled : s.pinDisabled,
+          style: TextStyle(
+            color: _hasPin ? accentLight : _AdminPalette.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('🔐', style: TextStyle(fontSize: 16)),
-              const SizedBox(width: 8),
-              Text(
-                s.pinCode,
-                style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700, fontSize: 14),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _hasPin ? accent.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _hasPin ? s.pinEnabled : s.pinDisabled,
-                  style: TextStyle(
-                    color: _hasPin ? accentLight : const Color(0xFF64748B),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -3575,7 +4238,11 @@ class _AdminScreenState extends State<AdminScreen> {
                     child: Center(
                       child: Text(
                         _hasPin ? s.pinChange : s.pinSetup,
-                        style: TextStyle(color: accentLight, fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(
+                          color: accentLight,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ),
@@ -3591,12 +4258,18 @@ class _AdminScreenState extends State<AdminScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.04),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
                       ),
                       child: Center(
                         child: Text(
                           s.pinDisable,
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w600, fontSize: 13),
+                          style: const TextStyle(
+                            color: _AdminPalette.muted,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ),
@@ -3619,10 +4292,15 @@ class _AdminScreenState extends State<AdminScreen> {
         label: Text(S.of(context).logout),
         style: OutlinedButton.styleFrom(
           foregroundColor: const Color(0xFFEF4444),
-          side: const BorderSide(color: Color(0xFFEF4444), width: 1),
+          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
+          side: BorderSide(
+            color: const Color(0xFFEF4444).withValues(alpha: 0.45),
+            width: 1,
+          ),
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
     );
@@ -3683,10 +4361,12 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
     super.initState();
     final metric = widget.metric;
     _maxCtrl = TextEditingController(text: '${metric.maxValue}');
-    _amountCtrl =
-        TextEditingController(text: metric.pointsPerUnit?.toString() ?? '');
-    _pointsCtrl =
-        TextEditingController(text: metric.pointsValue?.toString() ?? '');
+    _amountCtrl = TextEditingController(
+      text: metric.pointsPerUnit?.toString() ?? '',
+    );
+    _pointsCtrl = TextEditingController(
+      text: metric.pointsValue?.toString() ?? '',
+    );
   }
 
   @override
@@ -3697,18 +4377,26 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
   InputDecoration _decoration(String label, String? error) {
+    final accent = AccentProvider.instance.current;
     return InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
       errorText: error,
+      filled: true,
+      fillColor: _AdminPalette.field,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF6366F1)),
+        borderSide: BorderSide(color: accent.accent, width: 1.5),
       ),
     );
   }
@@ -3721,28 +4409,29 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
     final amountValue = amountRaw.isEmpty ? null : int.tryParse(amountRaw);
     final pointsValue = pointsRaw.isEmpty ? null : int.tryParse(pointsRaw);
     final hasScoring = amountRaw.isNotEmpty || pointsRaw.isNotEmpty;
-    final invalidMsg =
-        s.languageCode == 'kk' ? 'Қате мән' : 'Некорректное значение';
+    final invalidMsg = s.languageCode == 'kk'
+        ? 'Қате мән'
+        : 'Некорректное значение';
 
     if (maxValue == null ||
         maxValue <= 0 ||
         (hasScoring && (amountValue == null || amountValue <= 0)) ||
         (hasScoring && (pointsValue == null || pointsValue <= 0))) {
       setState(() {
-        _maxError =
-            (maxValue == null || maxValue <= 0) ? s.customCatMaxLabel : null;
-        _amountError =
-            hasScoring && (amountValue == null || amountValue <= 0)
-                ? invalidMsg
-                : null;
-        _pointsError =
-            hasScoring && (pointsValue == null || pointsValue <= 0)
-                ? invalidMsg
-                : null;
+        _maxError = (maxValue == null || maxValue <= 0)
+            ? s.customCatMaxLabel
+            : null;
+        _amountError = hasScoring && (amountValue == null || amountValue <= 0)
+            ? invalidMsg
+            : null;
+        _pointsError = hasScoring && (pointsValue == null || pointsValue <= 0)
+            ? invalidMsg
+            : null;
       });
       return;
     }
 
+    _dismissKeyboard();
     Navigator.of(context).pop(
       _MetricEditResult(
         maxValue: maxValue,
@@ -3756,8 +4445,9 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final metric = widget.metric;
+    final accent = AccentProvider.instance.current;
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: const Color(0xFF152A2D),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Row(
         children: [
@@ -3767,7 +4457,7 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
             child: Text(
               metric.localizedName(s.languageCode),
               style: const TextStyle(
-                color: Color(0xFFE2E8F0),
+                color: _AdminPalette.text,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -3781,19 +4471,27 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
             TextField(
               controller: _maxCtrl,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              onEditingComplete: _dismissKeyboard,
+              onSubmitted: (_) => _dismissKeyboard(),
               autofocus: true,
-              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              style: const TextStyle(color: _AdminPalette.text, fontSize: 16),
               onChanged: (_) {
                 if (_maxError != null) setState(() => _maxError = null);
               },
-              decoration:
-                  _decoration('Цель (${s.unitLabel(metric.unit)})', _maxError),
+              decoration: _decoration(
+                'Цель (${s.unitLabel(metric.unit)})',
+                _maxError,
+              ),
             ),
             const SizedBox(height: 14),
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              textInputAction: TextInputAction.done,
+              onEditingComplete: _dismissKeyboard,
+              onSubmitted: (_) => _dismissKeyboard(),
+              style: const TextStyle(color: _AdminPalette.text, fontSize: 16),
               onChanged: (_) {
                 if (_amountError != null) setState(() => _amountError = null);
               },
@@ -3806,7 +4504,10 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
             TextField(
               controller: _pointsCtrl,
               keyboardType: TextInputType.number,
-              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 16),
+              textInputAction: TextInputAction.done,
+              onEditingComplete: _dismissKeyboard,
+              onSubmitted: (_) => _dismissKeyboard(),
+              style: const TextStyle(color: _AdminPalette.text, fontSize: 16),
               onChanged: (_) {
                 if (_pointsError != null) setState(() => _pointsError = null);
               },
@@ -3820,17 +4521,23 @@ class _EditMetricDialogState extends State<_EditMetricDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            _dismissKeyboard();
+            Navigator.of(context).pop();
+          },
           child: Text(
             s.cancel,
-            style: const TextStyle(color: Color(0xFF64748B)),
+            style: const TextStyle(color: _AdminPalette.muted),
           ),
         ),
         TextButton(
           onPressed: _submit,
           child: Text(
             s.save,
-            style: const TextStyle(color: Color(0xFF6366F1)),
+            style: TextStyle(
+              color: accent.accentLight,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],
@@ -3917,7 +4624,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     final nameRu = _nameRuCtrl.text.trim();
     final nameKk = _nameKkCtrl.text.trim();
     final maxValue = _parsedMax;
-    final requiredMsg = s.languageCode == 'kk' ? 'Міндетті өріс' : 'Обязательное поле';
+    final requiredMsg = s.languageCode == 'kk'
+        ? 'Міндетті өріс'
+        : 'Обязательное поле';
     final ballRaw = _ballCtrl.text.trim();
     final ballParsed = _parsedBall;
     final pointsValueRaw = _pointsValueCtrl.text.trim();
@@ -3968,11 +4677,14 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     final s = S.of(context);
     final accent = AccentProvider.instance.current.accent;
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: const Color(0xFF152A2D),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: Text(
         s.customCatNewTitle,
-        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          color: Color(0xFFE2E8F0),
+          fontWeight: FontWeight.w700,
+        ),
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -3995,10 +4707,14 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -4025,10 +4741,14 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -4057,7 +4777,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                   backgroundColor: Colors.white.withValues(alpha: 0.05),
                   labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                   side: BorderSide(
-                    color: selected ? accent : Colors.white.withValues(alpha: 0.06),
+                    color: selected
+                        ? accent
+                        : Colors.white.withValues(alpha: 0.06),
                   ),
                 );
               }).toList(),
@@ -4084,7 +4806,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                     fontWeight: FontWeight.w600,
                   ),
                   side: BorderSide(
-                    color: selected ? accent : Colors.white.withValues(alpha: 0.06),
+                    color: selected
+                        ? accent
+                        : Colors.white.withValues(alpha: 0.06),
                   ),
                 );
               }).toList(),
@@ -4110,10 +4834,14 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -4127,7 +4855,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
             Text(
               s.customCatScoringAmountOptionalLabel,
               style: TextStyle(
-                color: _ballEnabled ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                color: _ballEnabled
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF475569),
                 fontSize: 12,
               ),
             ),
@@ -4137,7 +4867,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               keyboardType: TextInputType.number,
               enabled: _ballEnabled,
               style: TextStyle(
-                color: _ballEnabled ? const Color(0xFFE2E8F0) : const Color(0xFF475569),
+                color: _ballEnabled
+                    ? const Color(0xFFE2E8F0)
+                    : const Color(0xFF475569),
               ),
               onChanged: (_) {
                 setState(() {
@@ -4147,18 +4879,26 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               decoration: InputDecoration(
                 hintText: _ballEnabled
                     ? (s.languageCode == 'kk' ? 'Мысалы: 50' : 'Например: 50')
-                    : (s.languageCode == 'kk' ? 'Алдымен максимум енгізіңіз' : 'Сначала введите максимум'),
+                    : (s.languageCode == 'kk'
+                          ? 'Алдымен максимум енгізіңіз'
+                          : 'Сначала введите максимум'),
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 disabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.04),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -4172,8 +4912,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
             Text(
               s.customCatPointsValueLabel,
               style: TextStyle(
-                color:
-                    _ballEnabled ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                color: _ballEnabled
+                    ? const Color(0xFF94A3B8)
+                    : const Color(0xFF475569),
                 fontSize: 12,
               ),
             ),
@@ -4183,8 +4924,9 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
               keyboardType: TextInputType.number,
               enabled: _ballEnabled,
               style: TextStyle(
-                color:
-                    _ballEnabled ? const Color(0xFFE2E8F0) : const Color(0xFF475569),
+                color: _ballEnabled
+                    ? const Color(0xFFE2E8F0)
+                    : const Color(0xFF475569),
               ),
               onChanged: (_) {
                 setState(() {
@@ -4195,19 +4937,25 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 hintText: _ballEnabled
                     ? (s.languageCode == 'kk' ? 'Мысалы: 1' : 'Например: 1')
                     : (s.languageCode == 'kk'
-                        ? 'Алдымен максимум енгізіңіз'
-                        : 'Сначала введите максимум'),
+                          ? 'Алдымен максимум енгізіңіз'
+                          : 'Сначала введите максимум'),
                 hintStyle: const TextStyle(color: Color(0xFF475569)),
                 filled: true,
                 fillColor: Colors.white.withValues(alpha: 0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
                 ),
                 disabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.04)),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.04),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -4222,7 +4970,10 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                 _parsedPointsValue != null) ...[
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(8),
@@ -4233,7 +4984,10 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
                   children: [
                     Text(
                       s.languageCode == 'kk' ? 'Жалпы балл: ' : 'Общий балл: ',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 12,
+                      ),
                     ),
                     Text(
                       formatMetricPoints(
@@ -4255,18 +5009,172 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(s.cancel, style: const TextStyle(color: Color(0xFF94A3B8))),
+          child: Text(
+            s.cancel,
+            style: const TextStyle(color: Color(0xFF94A3B8)),
+          ),
         ),
         ElevatedButton(
           onPressed: _submit,
           style: ElevatedButton.styleFrom(
             backgroundColor: AccentProvider.instance.current.accentDark,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
-          child: Text(s.add, style: const TextStyle(fontWeight: FontWeight.w700)),
+          child: Text(
+            s.add,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
         ),
       ],
+    );
+  }
+}
+
+class _AdminSettingsCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  const _AdminSettingsCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _AdminPalette.panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _AdminPalette.line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 24,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _AdminPalette.emerald.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _AdminPalette.lineStrong),
+                ),
+                child: Icon(icon, color: _AdminPalette.gold, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: _AdminPalette.text,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminAccentTile extends StatelessWidget {
+  final AppAccent theme;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _AdminAccentTile({
+    required this.theme,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: selected
+              ? theme.accent.withValues(alpha: 0.14)
+              : _AdminPalette.field.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? theme.accent.withValues(alpha: 0.72)
+                : Colors.white.withValues(alpha: 0.07),
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [theme.accentLight, theme.accentDark],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.accent.withValues(
+                      alpha: selected ? 0.35 : 0.18,
+                    ),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: selected
+                  ? const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 17,
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                theme.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? theme.accentLight : _AdminPalette.muted,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -4286,6 +5194,8 @@ class _AdminLangBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = AccentProvider.instance.current.accent;
+    final accentLight = AccentProvider.instance.current.accentLight;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -4293,12 +5203,12 @@ class _AdminLangBtn extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           color: selected
-              ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-              : Colors.white.withValues(alpha: 0.04),
+              ? accent.withValues(alpha: 0.13)
+              : _AdminPalette.field.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected
-                ? const Color(0xFF6366F1).withValues(alpha: 0.5)
+                ? accent.withValues(alpha: 0.58)
                 : Colors.white.withValues(alpha: 0.08),
             width: selected ? 1.5 : 1,
           ),
@@ -4310,11 +5220,9 @@ class _AdminLangBtn extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: selected
-                    ? const Color(0xFFA5B4FC)
-                    : const Color(0xFF64748B),
+                color: selected ? accentLight : _AdminPalette.muted,
                 fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
               ),
             ),
           ],
@@ -4323,4 +5231,3 @@ class _AdminLangBtn extends StatelessWidget {
     );
   }
 }
-

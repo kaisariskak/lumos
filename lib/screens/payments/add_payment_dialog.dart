@@ -8,7 +8,10 @@ import '../../models/ibadat_profile.dart';
 
 class _ThousandSeparator extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue old, TextEditingValue next) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue old,
+    TextEditingValue next,
+  ) {
     final digits = next.text.replaceAll(' ', '');
     if (digits.isEmpty) return next.copyWith(text: '');
     final buf = StringBuffer();
@@ -124,260 +127,311 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    final accent = AccentProvider.instance.current;
     return Dialog(
       backgroundColor: const Color(0xFF1E293B),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: SingleChildScrollView(child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AccentProvider.instance.current.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Center(
-                      child: Text('💰', style: TextStyle(fontSize: 18))),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _isEdit ? s.editPayment : s.addPayment,
-                        style: const TextStyle(
-                          color: Color(0xFFE2E8F0),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AccentProvider.instance.current.accent.withValues(
+                        alpha: 0.15,
                       ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('💰', style: TextStyle(fontSize: 18)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isEdit ? s.editPayment : s.addPayment,
+                          style: const TextStyle(
+                            color: Color(0xFFE2E8F0),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          widget.member.nickname,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Amount
+              Text(
+                s.amountLabel,
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  _ThousandSeparator(),
+                ],
+                style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+                decoration: InputDecoration(
+                  hintText: '0',
+                  hintStyle: const TextStyle(color: Color(0xFF475569)),
+                  suffix: Text(
+                    '₸',
+                    style: TextStyle(
+                      color: AccentProvider.instance.current.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: 0.04),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AccentProvider.instance.current.accent,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Date
+              Text(
+                s.paymentDate,
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: _pickDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.04),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        color: AccentProvider.instance.current.accent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 10),
                       Text(
-                        widget.member.nickname,
-                        style: const TextStyle(
-                            color: Color(0xFF64748B), fontSize: 12),
+                        _paymentDate == null
+                            ? s.selectPaymentDate
+                            : '${_paymentDate!.day.toString().padLeft(2, '0')}.${_paymentDate!.month.toString().padLeft(2, '0')}.${_paymentDate!.year}',
+                        style: TextStyle(
+                          color: _paymentDate == null
+                              ? const Color(0xFF475569)
+                              : const Color(0xFFE2E8F0),
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Amount
-            Text(s.amountLabel,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly, _ThousandSeparator()],
-              style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700),
-              decoration: InputDecoration(
-                hintText: '0',
-                hintStyle: const TextStyle(color: Color(0xFF475569)),
-                suffix: Text('₸',
-                    style: TextStyle(
-                        color: AccentProvider.instance.current.accent, fontWeight: FontWeight.w700)),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.04),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AccentProvider.instance.current.accent),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Date
-            Text(s.paymentDate,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-            const SizedBox(height: 6),
-            GestureDetector(
-              onTap: _pickDate,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today,
-                        color: AccentProvider.instance.current.accent, size: 16),
-                    const SizedBox(width: 10),
-                    Text(
-                      _paymentDate == null
-                          ? s.selectPaymentDate
-                          : '${_paymentDate!.day.toString().padLeft(2, '0')}.${_paymentDate!.month.toString().padLeft(2, '0')}.${_paymentDate!.year}',
-                      style: TextStyle(
-                        color: _paymentDate == null
-                            ? const Color(0xFF475569)
-                            : const Color(0xFFE2E8F0),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Type toggles
-            _TypeToggle(
-              label: s.monthlyPayment,
-              emoji: '📅',
-              value: !_paidExtra,
-              onTap: () => setState(() => _paidExtra = false),
-            ),
-            const SizedBox(height: 8),
-            _TypeToggle(
-              label: s.extraPayment,
-              emoji: '⚡',
-              value: _paidExtra,
-              onTap: () => setState(() => _paidExtra = true),
-            ),
-            const SizedBox(height: 16),
-
-            // Fixed amount info
-            if (widget.fixedMonthlyAmount > 0) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.lock_outline,
-                        color: Color(0xFFA5B4FC), size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${s.fixedAmountLabel}: ${widget.fixedMonthlyAmount.toStringAsFixed(0)} ₸',
-                        style: const TextStyle(
-                            color: Color(0xFFA5B4FC), fontSize: 12),
-                      ),
-                    ),
-                  ],
-                ),
+              // Type toggles
+              _TypeToggle(
+                label: s.monthlyPayment,
+                emoji: '📅',
+                value: !_paidExtra,
+                onTap: () => setState(() => _paidExtra = false),
               ),
               const SizedBox(height: 8),
-            ],
+              _TypeToggle(
+                label: s.extraPayment,
+                emoji: '⚡',
+                value: _paidExtra,
+                onTap: () => setState(() => _paidExtra = true),
+              ),
+              const SizedBox(height: 16),
 
-            // Manual paid status toggle — hidden for Доп. (всегда оплачен)
-            if (!_paidExtra)
-            GestureDetector(
-              onTap: () => setState(() => _paidMonth = !_paidMonth),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: _paidMonth
-                      ? AccentProvider.instance.current.accent.withValues(alpha: 0.1)
-                      : Colors.white.withValues(alpha: 0.03),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _paidMonth
-                        ? AccentProvider.instance.current.accent.withValues(alpha: 0.3)
-                        : Colors.white.withValues(alpha: 0.08),
+              // Fixed amount info
+              if (widget.fixedMonthlyAmount > 0) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent.accent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: accent.accent.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.lock_outline,
+                        color: accent.accentLight,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${s.fixedAmountLabel}: ${widget.fixedMonthlyAmount.toStringAsFixed(0)} ₸',
+                          style: TextStyle(
+                            color: accent.accentLight,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _paidMonth
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      color: _paidMonth
-                          ? AccentProvider.instance.current.accent
-                          : const Color(0xFF475569),
-                      size: 20,
+                const SizedBox(height: 8),
+              ],
+
+              // Manual paid status toggle — hidden for Доп. (всегда оплачен)
+              if (!_paidExtra)
+                GestureDetector(
+                  onTap: () => setState(() => _paidMonth = !_paidMonth),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
                     ),
-                    const SizedBox(width: 10),
-                    Text(
-                      _paidMonth ? s.paidStatus : s.unpaidStatus,
-                      style: TextStyle(
+                    decoration: BoxDecoration(
+                      color: _paidMonth
+                          ? AccentProvider.instance.current.accent.withValues(
+                              alpha: 0.1,
+                            )
+                          : Colors.white.withValues(alpha: 0.03),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
                         color: _paidMonth
-                            ? AccentProvider.instance.current.accent
-                            : const Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                            ? AccentProvider.instance.current.accent.withValues(
+                                alpha: 0.3,
+                              )
+                            : Colors.white.withValues(alpha: 0.08),
                       ),
                     ),
-                  ],
+                    child: Row(
+                      children: [
+                        Icon(
+                          _paidMonth
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          color: _paidMonth
+                              ? AccentProvider.instance.current.accent
+                              : const Color(0xFF475569),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          _paidMonth ? s.paidStatus : s.unpaidStatus,
+                          style: TextStyle(
+                            color: _paidMonth
+                                ? AccentProvider.instance.current.accent
+                                : const Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            // Actions
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF64748B),
-                      side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.1)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(s.cancel),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _submit,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AccentProvider.instance.current.accent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(
-                      _isEdit ? s.save : s.add,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(s.cancel),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _submit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AccentProvider.instance.current.accent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        _isEdit ? s.save : s.add,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-      )),
+      ),
     );
   }
 }
@@ -397,18 +451,19 @@ class _TypeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = AccentProvider.instance.current;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: value
-              ? const Color(0xFF6366F1).withValues(alpha: 0.1)
+              ? accent.accent.withValues(alpha: 0.1)
               : Colors.white.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: value
-                ? const Color(0xFF6366F1).withValues(alpha: 0.3)
+                ? accent.accent.withValues(alpha: 0.3)
                 : Colors.white.withValues(alpha: 0.06),
           ),
         ),
@@ -419,16 +474,13 @@ class _TypeToggle extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: value
-                    ? const Color(0xFFA5B4FC)
-                    : const Color(0xFF64748B),
+                color: value ? accent.accentLight : const Color(0xFF64748B),
                 fontSize: 13,
                 fontWeight: value ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
             const Spacer(),
-            if (value)
-              const Icon(Icons.check, color: Color(0xFF6366F1), size: 16),
+            if (value) Icon(Icons.check, color: accent.accent, size: 16),
           ],
         ),
       ),

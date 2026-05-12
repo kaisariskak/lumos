@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -36,6 +38,8 @@ class _MainScaffoldState extends State<MainScaffold>
   IbadatGroup? _group;
   bool _isLoading = true;
   int _paymentsReloadToken = 0;
+  final Set<int> _builtTabs = {0};
+  Timer? _tabWarmUpTimer;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _reportKey = GlobalKey<ReportEditorScreenState>();
 
@@ -56,6 +60,7 @@ class _MainScaffoldState extends State<MainScaffold>
 
   @override
   void dispose() {
+    _tabWarmUpTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -69,39 +74,78 @@ class _MainScaffoldState extends State<MainScaffold>
 
   Future<void> _loadGroup() async {
     if (widget.profile.currentGroupId == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _group = null;
+        _isLoading = false;
+      });
+      if (widget.profile.isAdmin) {
+        _scheduleTabWarmUp(3);
+      }
       return;
     }
     try {
       final repo = IbadatGroupRepository(Supabase.instance.client);
       final group = await repo.getGroupById(widget.profile.currentGroupId!);
       if (!mounted) return;
-      final isFinancier = group != null && group.financierId == widget.profile.id;
-      final isAdmin = widget.profile.isAdmin;
+      final isFinancier =
+          group != null && group.financierId == widget.profile.id;
+      final isAdmin = _isEffectiveAdmin(group);
       final showPayments = group != null && (isFinancier || isAdmin);
       final tabCount = 2 + (showPayments ? 1 : 0) + 1;
       setState(() {
         _group = group;
         _isLoading = false;
-        if (_tabIndex >= tabCount) _tabIndex = tabCount - 1;
+        if (_tabIndex >= tabCount) {
+          _tabIndex = tabCount - 1;
+          _builtTabs.add(_tabIndex);
+        }
       });
+      _scheduleTabWarmUp(tabCount);
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _scheduleTabWarmUp(int tabCount) {
+    _tabWarmUpTimer?.cancel();
+    if (tabCount <= 1) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      var nextIndex = 1;
+
+      void buildNextTab() {
+        if (!mounted) return;
+        while (nextIndex < tabCount && _builtTabs.contains(nextIndex)) {
+          nextIndex++;
+        }
+        if (nextIndex >= tabCount) return;
+
+        setState(() => _builtTabs.add(nextIndex));
+        nextIndex++;
+        _tabWarmUpTimer = Timer(
+          const Duration(milliseconds: 220),
+          buildNextTab,
+        );
+      }
+
+      _tabWarmUpTimer = Timer(const Duration(milliseconds: 450), buildNextTab);
+    });
   }
 
   Future<void> _logout() async {
     await AuthLogoutService.signOut();
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Super-admin sees only the codes screen — no groups, no tabs
     if (widget.profile.isSuperAdmin) {
-      return SuperAdminCodesScreen(
-        profile: widget.profile,
-        onLogout: _logout,
-      );
+      return SuperAdminCodesScreen(profile: widget.profile, onLogout: _logout);
     }
 
     if (_isLoading) {
@@ -109,88 +153,64 @@ class _MainScaffoldState extends State<MainScaffold>
         backgroundColor: const Color(0xFF0F172A),
         body: Center(
           child: CircularProgressIndicator(
-              color: AccentProvider.instance.current.accent),
+            color: AccentProvider.instance.current.accent,
+          ),
         ),
       );
     }
 
-    final isAdmin = widget.profile.isAdmin;
     final group = _group;
+    final effectiveProfile = _effectiveProfileFor(group);
+    final isAdmin = effectiveProfile.isAdmin;
     final isFinancier = group != null && group.financierId == widget.profile.id;
     final showPayments = group != null && (isFinancier || isAdmin);
+    final noGroupForUser = group == null && !isAdmin;
+    final tabs = noGroupForUser
+        ? const <Widget>[]
+        : _buildTabViews(
+            group: group,
+            profile: effectiveProfile,
+            isAdmin: isAdmin,
+            showPayments: showPayments,
+          );
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF0F172A),
-              AccentProvider.instance.current.gradientMid,
-              const Color(0xFF0F172A),
-            ],
-            stops: const [0.0, 0.5, 1.0],
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: _dismissKeyboard,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFF0F172A),
+                AccentProvider.instance.current.gradientMid,
+                const Color(0xFF0F172A),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
           ),
+          child: noGroupForUser
+              ? _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup)
+              : IndexedStack(index: _tabIndex, children: tabs),
         ),
-        child: group == null && !isAdmin
-            ? _NoGroupPlaceholder(onSwitch: widget.onSwitchGroup)
-            : IndexedStack(
-                index: _tabIndex,
-                children: [
-                  HomeScreen(
-                    key: _homeKey,
-                    profile: widget.profile,
-                    group: group,
-                    onSwitchGroup: widget.onSwitchGroup,
-                  ),
-                  ReportEditorScreen(
-                    key: _reportKey,
-                    profile: widget.profile,
-                    group: group,
-                    onSaved: () => _homeKey.currentState?.reload(),
-                    onBack: () => setState(() => _tabIndex = 0),
-                  ),
-                  if (showPayments)
-                    PaymentsScreen(
-                      profile: widget.profile,
-                      group: group,
-                      reloadToken: _paymentsReloadToken,
-                    ),
-                  if (isAdmin)
-                    AdminScreen(
-                      profile: widget.profile,
-                      group: group,
-                      onSwitchGroup: widget.onSwitchGroup,
-                      onLogout: _logout,
-                      onGroupChanged: group == null
-                          ? widget.onReloadProfile
-                          : () {
-                              _loadGroup();
-                              _homeKey.currentState?.reload();
-                            },
-                    )
-                  else
-                    ProfileScreen(
-                      profile: widget.profile,
-                      group: group!,
-                      onSwitchGroup: widget.onSwitchGroup,
-                      onLogout: _logout,
-                    ),
-                ],
-              ),
       ),
-      bottomNavigationBar: group == null && !isAdmin
+      bottomNavigationBar: noGroupForUser
           ? null
           : _BottomNav(
               currentIndex: _tabIndex,
               isAdmin: isAdmin,
               showPayments: showPayments,
-              groupName: widget.profile.isSuperAdmin ? 'Барлық топтар' : (group?.name ?? ''),
+              groupName: widget.profile.isSuperAdmin
+                  ? 'Барлық топтар'
+                  : (group?.name ?? ''),
               onTap: (i) {
+                _dismissKeyboard();
                 setState(() {
                   _tabIndex = i;
+                  _builtTabs.add(i);
                   if (showPayments && i == 2) {
                     _paymentsReloadToken++;
                   }
@@ -203,6 +223,74 @@ class _MainScaffoldState extends State<MainScaffold>
               },
             ),
     );
+  }
+
+  List<Widget> _buildTabViews({
+    required IbadatGroup? group,
+    required IbadatProfile profile,
+    required bool isAdmin,
+    required bool showPayments,
+  }) {
+    final views = <Widget>[
+      HomeScreen(
+        key: _homeKey,
+        profile: profile,
+        group: group,
+        onSwitchGroup: widget.onSwitchGroup,
+      ),
+      ReportEditorScreen(
+        key: _reportKey,
+        profile: profile,
+        group: group,
+        onSaved: () => _homeKey.currentState?.reload(),
+        onBack: () => setState(() {
+          _tabIndex = 0;
+          _builtTabs.add(0);
+        }),
+      ),
+      if (showPayments)
+        PaymentsScreen(
+          profile: profile,
+          group: group!,
+          reloadToken: _paymentsReloadToken,
+        ),
+      if (isAdmin)
+        AdminScreen(
+          profile: profile,
+          group: group,
+          onSwitchGroup: widget.onSwitchGroup,
+          onLogout: _logout,
+          onGroupChanged: group == null
+              ? widget.onReloadProfile
+              : () {
+                  _loadGroup();
+                  _homeKey.currentState?.reload();
+                },
+        )
+      else
+        ProfileScreen(
+          profile: profile,
+          group: group!,
+          onSwitchGroup: widget.onSwitchGroup,
+          onLogout: _logout,
+        ),
+    ];
+
+    return [
+      for (var i = 0; i < views.length; i++)
+        _builtTabs.contains(i) ? views[i] : const SizedBox.shrink(),
+    ];
+  }
+
+  bool _isEffectiveAdmin(IbadatGroup? group) {
+    return widget.profile.isAdmin || group?.adminId == widget.profile.id;
+  }
+
+  IbadatProfile _effectiveProfileFor(IbadatGroup? group) {
+    if (_isEffectiveAdmin(group) && !widget.profile.isAdmin) {
+      return widget.profile.copyWith(role: 'admin');
+    }
+    return widget.profile;
   }
 }
 
@@ -236,10 +324,13 @@ class _NoGroupPlaceholder extends StatelessWidget {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
-            child: Text(s.selectGroupBtn,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Text(
+              s.selectGroupBtn,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),
@@ -269,7 +360,10 @@ class _BottomNav extends StatelessWidget {
       _NavTab(icon: '👥', label: s.tabList),
       _NavTab(icon: '📝', label: s.tabReport),
       if (showPayments) _NavTab(icon: '💰', label: s.tabPayments),
-      _NavTab(icon: isAdmin ? '👑' : '⚙️', label: isAdmin ? s.tabAdmin : s.tabProfile),
+      _NavTab(
+        icon: isAdmin ? '👑' : '⚙️',
+        label: isAdmin ? s.tabAdmin : s.tabProfile,
+      ),
     ];
 
     return Container(

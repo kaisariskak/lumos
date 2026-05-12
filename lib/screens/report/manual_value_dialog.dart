@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../theme/accent_provider.dart';
+
 class ManualValueDialog extends StatefulWidget {
   final int current;
   final String unitLabel;
@@ -43,6 +45,22 @@ class _ManualValueDialogState extends State<ManualValueDialog> {
     setState(() => _isValid = text.isNotEmpty && parsed != null && parsed >= 0);
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
+  void _cancel() {
+    _dismissKeyboard();
+    Navigator.of(context).pop();
+  }
+
+  void _save() {
+    if (!_isValid) return;
+    _dismissKeyboard();
+    Navigator.of(context).pop(int.parse(_ctrl.text.trim()));
+  }
+
   @override
   void dispose() {
     _ctrl.removeListener(_onChanged);
@@ -52,12 +70,16 @@ class _ManualValueDialogState extends State<ManualValueDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = AccentProvider.instance.current;
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E293B),
+      backgroundColor: const Color(0xFF152A2D),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         widget.title,
-        style: const TextStyle(color: Color(0xFFE2E8F0), fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          color: Color(0xFFE2E8F0),
+          fontWeight: FontWeight.w700,
+        ),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -66,18 +88,30 @@ class _ManualValueDialogState extends State<ManualValueDialog> {
           TextField(
             controller: _ctrl,
             autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(signed: false, decimal: false),
+            textInputAction: TextInputAction.done,
+            onEditingComplete: _dismissKeyboard,
+            onSubmitted: (_) => _dismissKeyboard(),
+            keyboardType: const TextInputType.numberWithOptions(
+              signed: false,
+              decimal: false,
+            ),
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 20, fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              color: Color(0xFFE2E8F0),
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+            ),
             decoration: InputDecoration(
               suffixText: widget.unitLabel,
               suffixStyle: const TextStyle(color: Color(0xFF94A3B8)),
               enabledBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
                 borderRadius: BorderRadius.circular(12),
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: widget.color, width: 2),
+                borderSide: BorderSide(color: accent.accent, width: 2),
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -91,16 +125,20 @@ class _ManualValueDialogState extends State<ManualValueDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(widget.cancelLabel, style: const TextStyle(color: Color(0xFF94A3B8))),
+          onPressed: _cancel,
+          child: Text(
+            widget.cancelLabel,
+            style: const TextStyle(color: Color(0xFF94A3B8)),
+          ),
         ),
         TextButton(
-          onPressed: _isValid
-              ? () => Navigator.of(context).pop(int.parse(_ctrl.text.trim()))
-              : null,
+          onPressed: _isValid ? _save : null,
           child: Text(
             widget.saveLabel,
-            style: TextStyle(color: _isValid ? widget.color : const Color(0xFF475569), fontWeight: FontWeight.w700),
+            style: TextStyle(
+              color: _isValid ? accent.accentLight : const Color(0xFF475569),
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],

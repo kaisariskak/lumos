@@ -6,6 +6,7 @@ import 'auth_profile_wait.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
+import '../repositories/ibadat_group_repository.dart';
 import '../repositories/profile_repository.dart';
 import '../screens/authorization/ibadat_authorization.dart';
 import '../screens/group_picker/group_picker_screen.dart';
@@ -40,8 +41,7 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
 
-    _authSub =
-        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       if (data.event == AuthChangeEvent.signedIn) {
         if (_usernameRegistrationInProgress) {
@@ -76,6 +76,18 @@ class _AuthGateState extends State<AuthGate> {
 
     final hasPin = await PinService.hasPin();
     if (hasPin) {
+      final profile = await _loadProfileForPinBypass();
+      if (profile != null && await _shouldBypassPin(profile)) {
+        if (!mounted) return;
+        setState(() {
+          _pinRequired = false;
+          _checkingBiometric = false;
+        });
+        await _loadProfile();
+        return;
+      }
+
+      if (!mounted) return;
       setState(() {
         _pinRequired = true;
         _checkingBiometric = false;
@@ -85,6 +97,44 @@ class _AuthGateState extends State<AuthGate> {
 
     setState(() => _checkingBiometric = false);
     await _loadProfile();
+  }
+
+  Future<IbadatProfile?> _loadProfileForPinBypass() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return null;
+    try {
+      return ProfileRepository(Supabase.instance.client).getProfile(user.id);
+    } catch (e) {
+      debugPrint('PIN bypass profile check failed: $e');
+      return null;
+    }
+  }
+
+  Future<bool> _shouldBypassPin(IbadatProfile profile) async {
+    if (profile.isSuperAdmin) return false;
+    try {
+      final groups = await IbadatGroupRepository(
+        Supabase.instance.client,
+      ).getGroupsByAdminIds([profile.id]);
+      return groups.isNotEmpty;
+    } catch (e) {
+      debugPrint('PIN bypass group check failed: $e');
+      return false;
+    }
+  }
+
+  Future<IbadatProfile> _normalizeAdminProfile(IbadatProfile profile) async {
+    if (profile.isAdmin || profile.isSuperAdmin) return profile;
+    try {
+      final groups = await IbadatGroupRepository(
+        Supabase.instance.client,
+      ).getGroupsByAdminIds([profile.id]);
+      if (groups.isEmpty) return profile;
+      return profile.copyWith(role: 'admin');
+    } catch (e) {
+      debugPrint('Admin ownership check failed: $e');
+      return profile;
+    }
   }
 
   void _onPinSuccess() {
@@ -128,6 +178,8 @@ class _AuthGateState extends State<AuthGate> {
         });
         return;
       }
+
+      profile = await _normalizeAdminProfile(profile);
 
       if (profile.currentGroupId == null && profile.role == 'user') {
         // Existing profile, no group → only need a USER invite code.
@@ -247,10 +299,7 @@ class _AuthGateState extends State<AuthGate> {
 
     // PIN required
     if (_pinRequired) {
-      return PinScreen(
-        onSuccess: _onPinSuccess,
-        onCancel: _logout,
-      );
+      return PinScreen(onSuccess: _onPinSuccess, onCancel: _logout);
     }
 
     // Profile load error
@@ -277,15 +326,23 @@ class _AuthGateState extends State<AuthGate> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF4F46E5),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
                 child: Text(s.retry),
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: _logout,
-                child: Text(s.logout, style: const TextStyle(color: Color(0xFF64748B))),
+                child: Text(
+                  s.logout,
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
               ),
             ],
           ),
@@ -305,10 +362,7 @@ class _AuthGateState extends State<AuthGate> {
 
     // Registration: nickname + invite code (new users only)
     if (_showRegistration) {
-      return RegistrationScreen(
-        onRegistered: _onRegistered,
-        onLogout: _logout,
-      );
+      return RegistrationScreen(onRegistered: _onRegistered, onLogout: _logout);
     }
 
     // Invite code screen (new user or existing user with no group)
