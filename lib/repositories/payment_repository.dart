@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/ibadat_payment.dart';
+import '../utils/perf_log.dart';
 
 class PaymentRepository {
   final SupabaseClient _client;
@@ -7,23 +8,35 @@ class PaymentRepository {
   PaymentRepository(this._client);
 
   Future<List<IbadatPayment>> getPaymentsByGroup(String groupId) async {
-    final data = await _client
-        .from('ibadat_payments')
-        .select()
-        .eq('group_id', groupId)
-        .order('created_at', ascending: false);
-    return (data as List).map((e) => IbadatPayment.fromJson(e)).toList();
+    return traceAsync(
+      'PaymentRepository.getPaymentsByGroup',
+      () async {
+        final data = await _client
+            .from('ibadat_payments')
+            .select()
+            .eq('group_id', groupId)
+            .order('created_at', ascending: false);
+        return (data as List).map((e) => IbadatPayment.fromJson(e)).toList();
+      },
+      describeResult: (payments) => 'rows=${payments.length}',
+    );
   }
 
   Future<List<IbadatPayment>> getPaymentsByProfile(
       String groupId, String profileId) async {
-    final data = await _client
-        .from('ibadat_payments')
-        .select()
-        .eq('group_id', groupId)
-        .eq('profile_id', profileId)
-        .order('created_at', ascending: false);
-    return (data as List).map((e) => IbadatPayment.fromJson(e)).toList();
+    return traceAsync(
+      'PaymentRepository.getPaymentsByProfile',
+      () async {
+        final data = await _client
+            .from('ibadat_payments')
+            .select()
+            .eq('group_id', groupId)
+            .eq('profile_id', profileId)
+            .order('created_at', ascending: false);
+        return (data as List).map((e) => IbadatPayment.fromJson(e)).toList();
+      },
+      describeResult: (payments) => 'rows=${payments.length}',
+    );
   }
 
   Future<IbadatPayment> addPayment(IbadatPayment payment) async {

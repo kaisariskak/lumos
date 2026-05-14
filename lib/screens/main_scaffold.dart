@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,6 +13,7 @@ import 'payments/payments_screen.dart';
 import 'profile/profile_screen.dart';
 import 'report/report_editor_screen.dart';
 import 'super_admin/super_admin_codes_screen.dart';
+import '../utils/perf_log.dart';
 
 class MainScaffold extends StatefulWidget {
   final IbadatProfile profile;
@@ -39,7 +38,6 @@ class _MainScaffoldState extends State<MainScaffold>
   bool _isLoading = true;
   int _paymentsReloadToken = 0;
   final Set<int> _builtTabs = {0};
-  Timer? _tabWarmUpTimer;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _reportKey = GlobalKey<ReportEditorScreenState>();
 
@@ -60,7 +58,6 @@ class _MainScaffoldState extends State<MainScaffold>
 
   @override
   void dispose() {
-    _tabWarmUpTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -73,63 +70,34 @@ class _MainScaffoldState extends State<MainScaffold>
   }
 
   Future<void> _loadGroup() async {
-    if (widget.profile.currentGroupId == null) {
-      setState(() {
-        _group = null;
-        _isLoading = false;
-      });
-      if (widget.profile.isAdmin) {
-        _scheduleTabWarmUp(3);
+    await traceAsync('MainScaffold._loadGroup', () async {
+      if (widget.profile.currentGroupId == null) {
+        setState(() {
+          _group = null;
+          _isLoading = false;
+        });
+        return;
       }
-      return;
-    }
-    try {
-      final repo = IbadatGroupRepository(Supabase.instance.client);
-      final group = await repo.getGroupById(widget.profile.currentGroupId!);
-      if (!mounted) return;
-      final isFinancier =
-          group != null && group.financierId == widget.profile.id;
-      final isAdmin = _isEffectiveAdmin(group);
-      final showPayments = group != null && (isFinancier || isAdmin);
-      final tabCount = 2 + (showPayments ? 1 : 0) + 1;
-      setState(() {
-        _group = group;
-        _isLoading = false;
-        if (_tabIndex >= tabCount) {
-          _tabIndex = tabCount - 1;
-          _builtTabs.add(_tabIndex);
-        }
-      });
-      _scheduleTabWarmUp(tabCount);
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _scheduleTabWarmUp(int tabCount) {
-    _tabWarmUpTimer?.cancel();
-    if (tabCount <= 1) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      var nextIndex = 1;
-
-      void buildNextTab() {
+      try {
+        final repo = IbadatGroupRepository(Supabase.instance.client);
+        final group = await repo.getGroupById(widget.profile.currentGroupId!);
         if (!mounted) return;
-        while (nextIndex < tabCount && _builtTabs.contains(nextIndex)) {
-          nextIndex++;
-        }
-        if (nextIndex >= tabCount) return;
-
-        setState(() => _builtTabs.add(nextIndex));
-        nextIndex++;
-        _tabWarmUpTimer = Timer(
-          const Duration(milliseconds: 220),
-          buildNextTab,
-        );
+        final isFinancier =
+            group != null && group.financierId == widget.profile.id;
+        final isAdmin = _isEffectiveAdmin(group);
+        final showPayments = group != null && (isFinancier || isAdmin);
+        final tabCount = 2 + (showPayments ? 1 : 0) + 1;
+        setState(() {
+          _group = group;
+          _isLoading = false;
+          if (_tabIndex >= tabCount) {
+            _tabIndex = tabCount - 1;
+            _builtTabs.add(_tabIndex);
+          }
+        });
+      } catch (_) {
+        if (mounted) setState(() => _isLoading = false);
       }
-
-      _tabWarmUpTimer = Timer(const Duration(milliseconds: 450), buildNextTab);
     });
   }
 

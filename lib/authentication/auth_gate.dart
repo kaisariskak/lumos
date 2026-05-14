@@ -16,6 +16,7 @@ import '../screens/registration/registration_screen.dart';
 import '../screens/pin/pin_screen.dart';
 import '../services/auth_logout_service.dart';
 import '../services/pin_service.dart';
+import '../utils/perf_log.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -68,42 +69,47 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _checkAuth() async {
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) {
-      setState(() => _checkingBiometric = false);
-      return;
-    }
-
-    final hasPin = await PinService.hasPin();
-    if (hasPin) {
-      final profile = await _loadProfileForPinBypass();
-      if (profile != null && await _shouldBypassPin(profile)) {
-        if (!mounted) return;
-        setState(() {
-          _pinRequired = false;
-          _checkingBiometric = false;
-        });
-        await _loadProfile();
+    await traceAsync('AuthGate._checkAuth', () async {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        setState(() => _checkingBiometric = false);
         return;
       }
 
-      if (!mounted) return;
-      setState(() {
-        _pinRequired = true;
-        _checkingBiometric = false;
-      });
-      return;
-    }
+      final hasPin = await traceAsync('PinService.hasPin', PinService.hasPin);
+      if (hasPin) {
+        final profile = await _loadProfileForPinBypass();
+        if (profile != null && await _shouldBypassPin(profile)) {
+          if (!mounted) return;
+          setState(() {
+            _pinRequired = false;
+            _checkingBiometric = false;
+          });
+          await _loadProfile();
+          return;
+        }
 
-    setState(() => _checkingBiometric = false);
-    await _loadProfile();
+        if (!mounted) return;
+        setState(() {
+          _pinRequired = true;
+          _checkingBiometric = false;
+        });
+        return;
+      }
+
+      setState(() => _checkingBiometric = false);
+      await _loadProfile();
+    });
   }
 
   Future<IbadatProfile?> _loadProfileForPinBypass() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return null;
     try {
-      return ProfileRepository(Supabase.instance.client).getProfile(user.id);
+      return traceAsync(
+        'AuthGate._loadProfileForPinBypass',
+        () => ProfileRepository(Supabase.instance.client).getProfile(user.id),
+      );
     } catch (e) {
       debugPrint('PIN bypass profile check failed: $e');
       return null;
@@ -113,9 +119,13 @@ class _AuthGateState extends State<AuthGate> {
   Future<bool> _shouldBypassPin(IbadatProfile profile) async {
     if (profile.isSuperAdmin) return false;
     try {
-      final groups = await IbadatGroupRepository(
-        Supabase.instance.client,
-      ).getGroupsByAdminIds([profile.id]);
+      final groups = await traceAsync(
+        'AuthGate._shouldBypassPin.groups',
+        () => IbadatGroupRepository(
+          Supabase.instance.client,
+        ).getGroupsByAdminIds([profile.id]),
+        describeResult: (groups) => 'groups=${groups.length}',
+      );
       return groups.isNotEmpty;
     } catch (e) {
       debugPrint('PIN bypass group check failed: $e');
@@ -126,9 +136,13 @@ class _AuthGateState extends State<AuthGate> {
   Future<IbadatProfile> _normalizeAdminProfile(IbadatProfile profile) async {
     if (profile.isAdmin || profile.isSuperAdmin) return profile;
     try {
-      final groups = await IbadatGroupRepository(
-        Supabase.instance.client,
-      ).getGroupsByAdminIds([profile.id]);
+      final groups = await traceAsync(
+        'AuthGate._normalizeAdminProfile.groups',
+        () => IbadatGroupRepository(
+          Supabase.instance.client,
+        ).getGroupsByAdminIds([profile.id]),
+        describeResult: (groups) => 'groups=${groups.length}',
+      );
       if (groups.isEmpty) return profile;
       return profile.copyWith(role: 'admin');
     } catch (e) {
@@ -143,11 +157,14 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _loadProfile({int usernameProfileAttempts = 0}) async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-    try {
-      final repo = ProfileRepository(Supabase.instance.client);
-      IbadatProfile? profile = await repo.getProfile(user.id);
+    await traceAsync(
+      'AuthGate._loadProfile attempt=$usernameProfileAttempts',
+      () async {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) return;
+        try {
+          final repo = ProfileRepository(Supabase.instance.client);
+          IbadatProfile? profile = await repo.getProfile(user.id);
 
       if (profile == null) {
         if (AuthProfileWait.shouldWaitForUsernameProfile(user.userMetadata) &&
@@ -202,11 +219,13 @@ class _AuthGateState extends State<AuthGate> {
         _showInviteCode = false;
         _showRegistration = false;
       });
-    } catch (e) {
-      debugPrint('Profile load error: $e');
-      if (!mounted) return;
-      setState(() => _profileError = true);
-    }
+        } catch (e) {
+          debugPrint('Profile load error: $e');
+          if (!mounted) return;
+          setState(() => _profileError = true);
+        }
+      },
+    );
   }
 
   /// Existing-user code activation: only ever called for USER codes

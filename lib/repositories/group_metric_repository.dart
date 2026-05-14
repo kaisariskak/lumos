@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/group_metric.dart';
+import '../utils/perf_log.dart';
 
 class GroupMetricRepository {
   final SupabaseClient _client;
@@ -8,30 +9,50 @@ class GroupMetricRepository {
   GroupMetricRepository(this._client);
 
   Future<List<GroupMetric>> getForGroup(String groupId) async {
-    final data = await _client
-        .from('group_metrics')
-        .select()
-        .eq('group_id', groupId)
-        .order('order_index', ascending: true)
-        .order('created_at', ascending: true);
+    return traceAsync(
+      'GroupMetricRepository.getForGroup',
+      () async {
+        final data = await _client
+            .from('group_metrics')
+            .select()
+            .eq('group_id', groupId)
+            .order('order_index', ascending: true)
+            .order('created_at', ascending: true);
 
-    return (data as List)
-        .map((row) => GroupMetric.fromJson(Map<String, dynamic>.from(row as Map)))
-        .toList();
+        return (data as List)
+            .map(
+              (row) => GroupMetric.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList();
+      },
+      describeResult: (metrics) => 'rows=${metrics.length}',
+    );
   }
 
   /// Returns personal metrics belonging to [adminId] (admin_id IS NOT NULL).
   Future<List<GroupMetric>> getForAdmin(String adminId) async {
-    final data = await _client
-        .from('group_metrics')
-        .select()
-        .eq('admin_id', adminId)
-        .order('order_index', ascending: true)
-        .order('created_at', ascending: true);
+    return traceAsync(
+      'GroupMetricRepository.getForAdmin',
+      () async {
+        final data = await _client
+            .from('group_metrics')
+            .select()
+            .eq('admin_id', adminId)
+            .order('order_index', ascending: true)
+            .order('created_at', ascending: true);
 
-    return (data as List)
-        .map((row) => GroupMetric.fromJson(Map<String, dynamic>.from(row as Map)))
-        .toList();
+        return (data as List)
+            .map(
+              (row) => GroupMetric.fromJson(
+                Map<String, dynamic>.from(row as Map),
+              ),
+            )
+            .toList();
+      },
+      describeResult: (metrics) => 'rows=${metrics.length}',
+    );
   }
 
   /// Creates a metric. Exactly one of [groupId] or [adminId] must be provided.

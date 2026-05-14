@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/ibadat_member_settings.dart';
+import '../utils/perf_log.dart';
 
 class MemberSettingsRepository {
   final SupabaseClient _client;
@@ -20,15 +21,20 @@ class MemberSettingsRepository {
 
   Future<Map<String, IbadatMemberSettings>> getSettingsForGroup(
       String groupId) async {
-    final data = await _client
-        .from('ibadat_member_settings')
-        .select()
-        .eq('group_id', groupId);
-    return {
-      for (final row in data as List)
-        (row['profile_id'] as String):
-            IbadatMemberSettings.fromJson(row),
-    };
+    return traceAsync(
+      'MemberSettingsRepository.getSettingsForGroup',
+      () async {
+        final data = await _client
+            .from('ibadat_member_settings')
+            .select()
+            .eq('group_id', groupId);
+        return {
+          for (final row in data as List)
+            (row['profile_id'] as String): IbadatMemberSettings.fromJson(row),
+        };
+      },
+      describeResult: (settings) => 'rows=${settings.length}',
+    );
   }
 
   Future<void> upsertSettings(IbadatMemberSettings settings) async {

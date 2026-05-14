@@ -4596,6 +4596,7 @@ class _AddGroupMetricDialogState extends State<_AddGroupMetricDialog> {
     '🎧',
     '🌹',
     '🤲',
+    '🧎',
     '🌙',
     '📿',
     '🕌',

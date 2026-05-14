@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,6 +16,7 @@ import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../theme/accent_provider.dart';
+import '../../utils/perf_log.dart';
 import '../../utils/week_utils.dart';
 import '../../widgets/ring_indicator.dart';
 import '../detail/detail_screen.dart';
@@ -129,78 +132,106 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
-    final version = ++_loadVersion;
-    setState(() => _isLoading = true);
-    try {
-      if (_isAdmin && !_isSuperAdmin) {
-        await _loadAdminData(version);
-      } else {
-        await _loadUserData(version);
+    await traceAsync('HomeScreen._loadData', () async {
+      final version = ++_loadVersion;
+      setState(() => _isLoading = true);
+      try {
+        if (_isAdmin && !_isSuperAdmin) {
+          await _loadAdminData(version);
+        } else {
+          await _loadUserData(version);
+        }
+      } catch (_) {
+        // ignore
+      } finally {
+        // Always clear the spinner so it never gets stuck when a silentReload
+        // incremented _loadVersion while this initial load was still running.
+        if (mounted) setState(() => _isLoading = false);
       }
-    } catch (_) {
-      // ignore
-    } finally {
-      // Always clear the spinner so it never gets stuck when a silentReload
-      // incremented _loadVersion while this initial load was still running.
-      if (mounted) setState(() => _isLoading = false);
-    }
+    });
   }
 
   // ── Admin: load all groups this admin owns ──────────────────────────────────
   Future<void> _loadAdminData(int version) async {
-    final allGroups = await _groupRepo.getAllGroups();
-    final myGroups = allGroups
-        .where((g) => g.adminId == widget.profile.id)
-        .toList();
+    await traceAsync('HomeScreen._loadAdminData', () async {
+      final allGroups = await _groupRepo.getAllGroups();
+      final myGroups = allGroups
+          .where((g) => g.adminId == widget.profile.id)
+          .toList();
 
-    // Load sections, personal metrics, and admin's personal periods in parallel.
-    // Admin periods are loaded at state level so the self-report card works
-    // even before any group is created.
-    final sectionsFuture = Future.wait(myGroups.map(_loadSection));
-    final personalMetricsFuture = _metricRepo.getForAdmin(widget.profile.id);
-    final adminPeriodsFuture = _periodRepo.getPersonalPeriodsForAdmin(
-      widget.profile.id,
-    );
+      // Load sections, personal metrics, and admin's personal periods in parallel.
+      // Admin periods are loaded at state level so the self-report card works
+      // even before any group is created.
+      final sectionsFuture = Future.wait(myGroups.map(_loadSection));
+      final personalMetricsFuture = _metricRepo.getForAdmin(widget.profile.id);
+      final adminPeriodsFuture = _periodRepo.getPersonalPeriodsForAdmin(
+        widget.profile.id,
+      );
 
-    final sections = await sectionsFuture;
-    final personalMetrics = await personalMetricsFuture;
-    final adminPeriods = (await adminPeriodsFuture).reversed
-        .toList(); // oldest first
+      final sections = await sectionsFuture;
+      final personalMetrics = await personalMetricsFuture;
+      final adminPeriods = (await adminPeriodsFuture).reversed
+          .toList(); // oldest first
 
-    final adminReport = await _fetchAdminReport(adminPeriods);
-
-    if (mounted && _loadVersion == version) {
-      setState(() {
-        _sections = sections;
-        _adminPersonalMetrics = personalMetrics;
-        _adminPeriods = adminPeriods;
-        _adminReport = adminReport;
-      });
-    }
+      if (mounted && _loadVersion == version) {
+        setState(() {
+          _sections = sections;
+          _adminPersonalMetrics = personalMetrics;
+          _adminPeriods = adminPeriods;
+          _adminReport = null;
+        });
+        unawaited(_loadAdminReports(version, sections, adminPeriods));
+      }
+    });
   }
 
   Future<_GroupSection> _loadSection(IbadatGroup group) async {
-    final section = _GroupSection(group: group);
+    return traceAsync(
+      'HomeScreen._loadSection group=${group.id}',
+      () async {
+        final section = _GroupSection(group: group);
 
-    final results = await Future.wait([
-      _groupRepo.getGroupMembers(group.id),
-      _metricRepo.getForGroup(group.id),
-      _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
-    ]);
+        final results = await Future.wait([
+          _groupRepo.getGroupMembers(group.id),
+          _metricRepo.getForGroup(group.id),
+          _periodRepo.getPeriodsForGroup(group.id, includePersonal: false),
+        ]);
 
-    section.members = visibleGroupMembers(
-      results[0] as List<IbadatProfile>,
-      adminId: group.adminId,
+        section.members = visibleGroupMembers(
+          results[0] as List<IbadatProfile>,
+          adminId: group.adminId,
+        );
+        section.metrics = results[1] as List<GroupMetric>;
+        final periodsRaw = results[2] as List<IbadatPeriod>;
+        section.periods = periodsRaw.reversed.toList(); // oldest first
+
+        return section;
+      },
+      describeResult: (section) =>
+          'members=${section.members.length} metrics=${section.metrics.length} periods=${section.periods.length}',
     );
-    section.metrics = results[1] as List<GroupMetric>;
-    final periodsRaw = results[2] as List<IbadatPeriod>;
-    section.periods = periodsRaw.reversed.toList(); // oldest first
+  }
 
-    await _loadSectionReports(section);
-    return section;
+  Future<void> _loadAdminReports(
+    int version,
+    List<_GroupSection> sections,
+    List<IbadatPeriod> adminPeriods,
+  ) async {
+    await traceAsync('HomeScreen._loadAdminReports', () async {
+      await Future.wait(sections.map(_loadSectionReports));
+      final adminReport = await _fetchAdminReport(adminPeriods);
+      if (!mounted || _loadVersion != version) return;
+      setState(() => _adminReport = adminReport);
+    });
   }
 
   Future<void> _loadSectionReports(_GroupSection section) async {
+    final trace = Stopwatch()..start();
+    if (perfLogsEnabled) {
+      debugPrint(
+        '[PERF] START HomeScreen._loadSectionReports group=${section.group.id}',
+      );
+    }
     final month = section.viewMonth;
     final year = section.viewYear;
 
@@ -243,6 +274,13 @@ class HomeScreenState extends State<HomeScreen> {
       }
     }
     section.trendReports = trend;
+    if (perfLogsEnabled) {
+      debugPrint(
+        '[PERF] END HomeScreen._loadSectionReports group=${section.group.id} '
+        '${trace.elapsedMilliseconds}ms currentReports=${section.monthlyReports.length} '
+        'trendBuckets=${section.trendReports.length}',
+      );
+    }
 
     // Admin's own report — loaded separately by _loadAdminReport
   }
@@ -301,81 +339,109 @@ class HomeScreenState extends State<HomeScreen> {
 
   // ── User: single group ──────────────────────────────────────────────────────
   Future<void> _loadUserData([int? version]) async {
-    version ??= ++_loadVersion;
-    final results = await Future.wait([
-      _groupRepo.getGroupMembers(widget.group!.id),
-      _metricRepo.getForGroup(widget.group!.id),
-      _periodRepo.getPeriodsForGroup(widget.group!.id, includePersonal: false),
-    ]);
-    final members = visibleGroupMembers(
-      results[0] as List<IbadatProfile>,
-      adminId: widget.group!.adminId,
-    );
-    final metrics = results[1] as List<GroupMetric>;
-    final loadedPeriods = results[2] as List<IbadatPeriod>;
-    final periods = loadedPeriods.reversed.toList();
-
-    final isPeriodMode = periods.isNotEmpty;
-    int viewMonth = _viewMonth;
-    int viewYear = _viewYear;
-    if (isPeriodMode) {
-      final idx = _userPeriodIdx.clamp(0, periods.length - 1);
-      viewMonth = periods[idx].startDate.month;
-      viewYear = periods[idx].startDate.year;
-    }
-
-    final Map<String, IbadatReport> monthly = {};
-    if (isPeriodMode) {
-      final period = periods[_userPeriodIdx.clamp(0, periods.length - 1)];
-      final r = await _reportRepo.getReportByPeriod(
-        userId: widget.profile.id,
-        groupId: widget.group!.id,
-        periodId: period.id,
+    await traceAsync('HomeScreen._loadUserData', () async {
+      final loadVersion = version ?? ++_loadVersion;
+      final results = await Future.wait([
+        _groupRepo.getGroupMembers(widget.group!.id),
+        _metricRepo.getForGroup(widget.group!.id),
+        _periodRepo.getPeriodsForGroup(widget.group!.id, includePersonal: false),
+      ]);
+      final members = visibleGroupMembers(
+        results[0] as List<IbadatProfile>,
+        adminId: widget.group!.adminId,
       );
-      if (r != null) monthly[r.userId] = r;
-    } else {
-      final r = await _reportRepo.getReport(
-        userId: widget.profile.id,
-        groupId: widget.group!.id,
-        month: viewMonth,
-        year: viewYear,
-      );
-      if (r != null) monthly[r.userId] = r;
-    }
+      final metrics = results[1] as List<GroupMetric>;
+      final loadedPeriods = results[2] as List<IbadatPeriod>;
+      final periods = loadedPeriods.reversed.toList();
 
-    final Map<int, Map<String, IbadatReport>> trend = {};
-    if (isPeriodMode) {
-      for (final p in periods.take(4)) {
-        final tr = await _reportRepo.getReportByPeriod(
+      final isPeriodMode = periods.isNotEmpty;
+      int viewMonth = _viewMonth;
+      int viewYear = _viewYear;
+      if (isPeriodMode) {
+        final idx = _userPeriodIdx.clamp(0, periods.length - 1);
+        viewMonth = periods[idx].startDate.month;
+        viewYear = periods[idx].startDate.year;
+      }
+
+      if (mounted && _loadVersion == loadVersion) {
+        setState(() {
+          _userMembers = members;
+          _userMetrics = metrics;
+          _userPeriods = periods;
+          _viewMonth = viewMonth;
+          _viewYear = viewYear;
+          _userMonthlyReports = {};
+          _userTrendReports = {};
+        });
+        unawaited(
+          _loadUserReports(
+            loadVersion,
+            periods,
+            _userPeriodIdx,
+            viewMonth,
+            viewYear,
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _loadUserReports(
+    int version,
+    List<IbadatPeriod> periods,
+    int periodIdx,
+    int viewMonth,
+    int viewYear,
+  ) async {
+    await traceAsync('HomeScreen._loadUserReports', () async {
+      final isPeriodMode = periods.isNotEmpty;
+      final monthly = <String, IbadatReport>{};
+      if (isPeriodMode) {
+        final period = periods[periodIdx.clamp(0, periods.length - 1)];
+        final r = await _reportRepo.getReportByPeriod(
           userId: widget.profile.id,
           groupId: widget.group!.id,
-          periodId: p.id,
+          periodId: period.id,
         );
-        trend[p.startDate.month] = tr != null ? {tr.userId: tr} : {};
-      }
-    } else {
-      for (final (m, y) in _lastFourMonths(viewMonth, viewYear)) {
-        final tr = await _reportRepo.getReport(
+        if (r != null) monthly[r.userId] = r;
+      } else {
+        final r = await _reportRepo.getReport(
           userId: widget.profile.id,
           groupId: widget.group!.id,
-          month: m,
-          year: y,
+          month: viewMonth,
+          year: viewYear,
         );
-        trend[m] = tr != null ? {tr.userId: tr} : {};
+        if (r != null) monthly[r.userId] = r;
       }
-    }
 
-    if (mounted && _loadVersion == version) {
+      final trend = <int, Map<String, IbadatReport>>{};
+      if (isPeriodMode) {
+        for (final p in periods.take(4)) {
+          final tr = await _reportRepo.getReportByPeriod(
+            userId: widget.profile.id,
+            groupId: widget.group!.id,
+            periodId: p.id,
+          );
+          trend[p.startDate.month] = tr != null ? {tr.userId: tr} : {};
+        }
+      } else {
+        for (final (m, y) in _lastFourMonths(viewMonth, viewYear)) {
+          final tr = await _reportRepo.getReport(
+            userId: widget.profile.id,
+            groupId: widget.group!.id,
+            month: m,
+            year: y,
+          );
+          trend[m] = tr != null ? {tr.userId: tr} : {};
+        }
+      }
+
+      if (!mounted || _loadVersion != version) return;
       setState(() {
-        _userMembers = members;
-        _userMetrics = metrics;
-        _userPeriods = periods;
-        _viewMonth = viewMonth;
-        _viewYear = viewYear;
         _userMonthlyReports = monthly;
         _userTrendReports = trend;
       });
-    }
+    });
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

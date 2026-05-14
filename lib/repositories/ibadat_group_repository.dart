@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/ibadat_group.dart';
 import '../models/ibadat_profile.dart';
+import '../utils/perf_log.dart';
 
 class IbadatGroupRepository {
   final SupabaseClient _client;
@@ -8,32 +10,46 @@ class IbadatGroupRepository {
   IbadatGroupRepository(this._client);
 
   Future<List<IbadatGroup>> getAllGroups() async {
-    final data = await _client
-        .from('ibadat_groups')
-        .select()
-        .order('created_at', ascending: false);
-    return (data as List).map((e) => IbadatGroup.fromJson(e)).toList();
+    return traceAsync(
+      'IbadatGroupRepository.getAllGroups',
+      () async {
+        final data = await _client
+            .from('ibadat_groups')
+            .select()
+            .order('created_at', ascending: false);
+        return (data as List).map((e) => IbadatGroup.fromJson(e)).toList();
+      },
+      describeResult: (groups) => 'rows=${groups.length}',
+    );
   }
 
   /// Returns only groups whose admin is in the given list (for super-admin scoped view)
   Future<List<IbadatGroup>> getGroupsByAdminIds(List<String> adminIds) async {
     if (adminIds.isEmpty) return [];
-    final data = await _client
-        .from('ibadat_groups')
-        .select()
-        .inFilter('admin_id', adminIds)
-        .order('created_at', ascending: false);
-    return (data as List).map((e) => IbadatGroup.fromJson(e)).toList();
+    return traceAsync(
+      'IbadatGroupRepository.getGroupsByAdminIds admins=${adminIds.length}',
+      () async {
+        final data = await _client
+            .from('ibadat_groups')
+            .select()
+            .inFilter('admin_id', adminIds)
+            .order('created_at', ascending: false);
+        return (data as List).map((e) => IbadatGroup.fromJson(e)).toList();
+      },
+      describeResult: (groups) => 'rows=${groups.length}',
+    );
   }
 
   Future<IbadatGroup?> getGroupById(String id) async {
-    final data = await _client
-        .from('ibadat_groups')
-        .select()
-        .eq('id', id)
-        .maybeSingle();
-    if (data == null) return null;
-    return IbadatGroup.fromJson(data);
+    return traceAsync('IbadatGroupRepository.getGroupById', () async {
+      final data = await _client
+          .from('ibadat_groups')
+          .select()
+          .eq('id', id)
+          .maybeSingle();
+      if (data == null) return null;
+      return IbadatGroup.fromJson(data);
+    }, describeResult: (group) => 'found=${group != null}');
   }
 
   Future<IbadatGroup> createGroup(String name, String adminId) async {
@@ -74,6 +90,13 @@ class IbadatGroupRepository {
   }
 
   Future<List<IbadatProfile>> getGroupMembers(String groupId, {String? adminId}) async {
+    final trace = Stopwatch()..start();
+    if (perfLogsEnabled) {
+      debugPrint(
+        '[PERF] START IbadatGroupRepository.getGroupMembers '
+        'adminIncluded=${adminId != null}',
+      );
+    }
     final query = _client.from('ibadat_profiles').select();
     final List data;
     if (adminId != null) {
@@ -84,6 +107,13 @@ class IbadatGroupRepository {
     final members = data.map((e) => IbadatProfile.fromJson(e)).toList();
     // Убираем дубликаты (если admin уже есть в current_group_id)
     final seen = <String>{};
-    return members.where((m) => seen.add(m.id)).toList();
+    final uniqueMembers = members.where((m) => seen.add(m.id)).toList();
+    if (perfLogsEnabled) {
+      debugPrint(
+        '[PERF] END IbadatGroupRepository.getGroupMembers '
+        '${trace.elapsedMilliseconds}ms rows=${uniqueMembers.length}',
+      );
+    }
+    return uniqueMembers;
   }
 }

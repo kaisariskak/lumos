@@ -11,6 +11,7 @@ import '../../repositories/member_settings_repository.dart';
 import '../../repositories/payment_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../theme/accent_provider.dart';
+import '../../utils/perf_log.dart';
 import 'member_payments_screen.dart';
 
 class PaymentsScreen extends StatefulWidget {
@@ -76,6 +77,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   }
 
   Future<void> _load() async {
+    final trace = Stopwatch()..start();
+    if (perfLogsEnabled) {
+      debugPrint('[PERF] START PaymentsScreen._load');
+    }
     setState(() => _isLoading = true);
     try {
       final groups = await _loadVisibleGroups();
@@ -103,6 +108,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         map[m.id] = allPayments.where((p) => p.profileId == m.id).toList();
       }
 
+      if (perfLogsEnabled) {
+        debugPrint(
+          '[PERF] PaymentsScreen._load rows groups=${groups.length} '
+          'members=${members.length} payments=${allPayments.length} '
+          'settings=${settings.length}',
+        );
+      }
+
       setState(() {
         _groups = groups;
         _selectedGroup = selectedGroup;
@@ -113,13 +126,23 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       });
     } catch (_) {
       setState(() => _isLoading = false);
+    } finally {
+      if (perfLogsEnabled) {
+        debugPrint(
+          '[PERF] END PaymentsScreen._load ${trace.elapsedMilliseconds}ms',
+        );
+      }
     }
   }
 
   Future<List<IbadatGroup>> _loadVisibleGroups() async {
     if (!widget.profile.isAdmin) return [widget.group];
 
-    final groups = await _groupRepo.getGroupsByAdminIds([widget.profile.id]);
+    final groups = await traceAsync(
+      'PaymentsScreen._loadVisibleGroups',
+      () => _groupRepo.getGroupsByAdminIds([widget.profile.id]),
+      describeResult: (groups) => 'groups=${groups.length}',
+    );
     final visible = <IbadatGroup>[];
     final seen = <String>{};
 

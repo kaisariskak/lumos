@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/ibadat_period.dart';
+import '../utils/perf_log.dart';
 
 class IbadatPeriodRepository {
   final SupabaseClient _client;
@@ -7,15 +8,21 @@ class IbadatPeriodRepository {
   IbadatPeriodRepository(this._client);
 
   Future<List<IbadatPeriod>> getPeriodsForGroup(String groupId, {bool includePersonal = true}) async {
-    var query = _client
-        .from('ibadat_periods')
-        .select()
-        .eq('group_id', groupId);
-    if (!includePersonal) {
-      query = query.eq('is_personal', false);
-    }
-    final data = await query.order('start_date', ascending: false);
-    return (data as List).map((j) => IbadatPeriod.fromJson(j)).toList();
+    return traceAsync(
+      'IbadatPeriodRepository.getPeriodsForGroup includePersonal=$includePersonal',
+      () async {
+        var query = _client
+            .from('ibadat_periods')
+            .select()
+            .eq('group_id', groupId);
+        if (!includePersonal) {
+          query = query.eq('is_personal', false);
+        }
+        final data = await query.order('start_date', ascending: false);
+        return (data as List).map((j) => IbadatPeriod.fromJson(j)).toList();
+      },
+      describeResult: (periods) => 'rows=${periods.length}',
+    );
   }
 
   Future<IbadatPeriod> createPeriod({
@@ -42,13 +49,19 @@ class IbadatPeriodRepository {
   }
 
   Future<List<IbadatPeriod>> getPersonalPeriodsForAdmin(String adminId) async {
-    final data = await _client
-        .from('ibadat_periods')
-        .select()
-        .eq('created_by', adminId)
-        .eq('is_personal', true)
-        .order('start_date', ascending: false);
-    return (data as List).map((j) => IbadatPeriod.fromJson(j)).toList();
+    return traceAsync(
+      'IbadatPeriodRepository.getPersonalPeriodsForAdmin',
+      () async {
+        final data = await _client
+            .from('ibadat_periods')
+            .select()
+            .eq('created_by', adminId)
+            .eq('is_personal', true)
+            .order('start_date', ascending: false);
+        return (data as List).map((j) => IbadatPeriod.fromJson(j)).toList();
+      },
+      describeResult: (periods) => 'rows=${periods.length}',
+    );
   }
 
   Future<void> deletePeriod(String periodId) async {

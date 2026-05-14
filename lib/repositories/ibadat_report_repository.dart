@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/ibadat_report.dart';
+import '../utils/perf_log.dart';
 
 abstract class IbadatReportDataStore {
   Future<Map<String, dynamic>?> getReport({
@@ -331,16 +332,18 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     required int month,
     required int year,
   }) async {
-    var query = _client
-        .from('ibadat_reports')
-        .select()
-        .eq('user_id', userId)
-        .eq('month', month)
-        .eq('year', year);
-    query = groupId == null
-        ? query.isFilter('group_id', null)
-        : query.eq('group_id', groupId);
-    return await query.maybeSingle();
+    return traceAsync('IbadatReportStore.getReport', () async {
+      var query = _client
+          .from('ibadat_reports')
+          .select()
+          .eq('user_id', userId)
+          .eq('month', month)
+          .eq('year', year);
+      query = groupId == null
+          ? query.isFilter('group_id', null)
+          : query.eq('group_id', groupId);
+      return await query.maybeSingle();
+    }, describeResult: (report) => 'found=${report != null}');
   }
 
   @override
@@ -349,15 +352,17 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     String? groupId,
     required String periodId,
   }) async {
-    var query = _client
-        .from('ibadat_reports')
-        .select()
-        .eq('user_id', userId)
-        .eq('period_id', periodId);
-    query = groupId == null
-        ? query.isFilter('group_id', null)
-        : query.eq('group_id', groupId);
-    return await query.maybeSingle();
+    return traceAsync('IbadatReportStore.getReportByPeriod', () async {
+      var query = _client
+          .from('ibadat_reports')
+          .select()
+          .eq('user_id', userId)
+          .eq('period_id', periodId);
+      query = groupId == null
+          ? query.isFilter('group_id', null)
+          : query.eq('group_id', groupId);
+      return await query.maybeSingle();
+    }, describeResult: (report) => 'found=${report != null}');
   }
 
   @override
@@ -366,13 +371,19 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     required int month,
     required int year,
   }) async {
-    final data = await _client
-        .from('ibadat_reports')
-        .select()
-        .eq('group_id', groupId)
-        .eq('month', month)
-        .eq('year', year);
-    return _castRows(data);
+    return traceAsync(
+      'IbadatReportStore.getGroupReports',
+      () async {
+        final data = await _client
+            .from('ibadat_reports')
+            .select()
+            .eq('group_id', groupId)
+            .eq('month', month)
+            .eq('year', year);
+        return _castRows(data);
+      },
+      describeResult: (reports) => 'rows=${reports.length}',
+    );
   }
 
   @override
@@ -380,12 +391,18 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     required String groupId,
     required String periodId,
   }) async {
-    final data = await _client
-        .from('ibadat_reports')
-        .select()
-        .eq('group_id', groupId)
-        .eq('period_id', periodId);
-    return _castRows(data);
+    return traceAsync(
+      'IbadatReportStore.getGroupReportsByPeriod',
+      () async {
+        final data = await _client
+            .from('ibadat_reports')
+            .select()
+            .eq('group_id', groupId)
+            .eq('period_id', periodId);
+        return _castRows(data);
+      },
+      describeResult: (reports) => 'rows=${reports.length}',
+    );
   }
 
   @override
@@ -447,16 +464,22 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     required List<int> months,
     required int year,
   }) async {
-    var query = _client
-        .from('ibadat_reports')
-        .select()
-        .eq('user_id', userId)
-        .eq('year', year);
-    query = groupId == null
-        ? query.isFilter('group_id', null)
-        : query.eq('group_id', groupId);
-    final data = await query.inFilter('month', months);
-    return _castRows(data);
+    return traceAsync(
+      'IbadatReportStore.getUserRecentReports months=${months.length}',
+      () async {
+        var query = _client
+            .from('ibadat_reports')
+            .select()
+            .eq('user_id', userId)
+            .eq('year', year);
+        query = groupId == null
+            ? query.isFilter('group_id', null)
+            : query.eq('group_id', groupId);
+        final data = await query.inFilter('month', months);
+        return _castRows(data);
+      },
+      describeResult: (reports) => 'rows=${reports.length}',
+    );
   }
 
   @override
@@ -490,22 +513,28 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
 
   @override
   Future<Map<String, int>> getMetricValues(String reportId) async {
-    final data = await _client
-        .from('report_metric_values')
-        .select('metric_id, value')
-        .eq('report_id', reportId);
+    return traceAsync(
+      'IbadatReportStore.getMetricValues',
+      () async {
+        final data = await _client
+            .from('report_metric_values')
+            .select('metric_id, value')
+            .eq('report_id', reportId);
 
-    final values = <String, int>{};
-    for (final row in data as List) {
-      final map = Map<String, dynamic>.from(row as Map);
-      final metricId = map['metric_id']?.toString();
-      final value = map['value'];
-      if (metricId == null || value == null) {
-        continue;
-      }
-      values[metricId] = value as int;
-    }
-    return values;
+        final values = <String, int>{};
+        for (final row in data as List) {
+          final map = Map<String, dynamic>.from(row as Map);
+          final metricId = map['metric_id']?.toString();
+          final value = map['value'];
+          if (metricId == null || value == null) {
+            continue;
+          }
+          values[metricId] = value as int;
+        }
+        return values;
+      },
+      describeResult: (values) => 'rows=${values.length}',
+    );
   }
 
   @override
@@ -516,26 +545,34 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
       return const {};
     }
 
-    final data = await _client
-        .from('report_metric_values')
-        .select('report_id, metric_id, value')
-        .inFilter('report_id', reportIds);
+    return traceAsync(
+      'IbadatReportStore.getMetricValuesForReports reports=${reportIds.length}',
+      () async {
+        final data = await _client
+            .from('report_metric_values')
+            .select('report_id, metric_id, value')
+            .inFilter('report_id', reportIds);
 
-    final valuesByReportId = <String, Map<String, int>>{
-      for (final reportId in reportIds) reportId: <String, int>{},
-    };
-    for (final row in data as List) {
-      final map = Map<String, dynamic>.from(row as Map);
-      final reportId = map['report_id']?.toString();
-      final metricId = map['metric_id']?.toString();
-      final value = map['value'];
-      if (reportId == null || metricId == null || value == null) {
-        continue;
-      }
-      valuesByReportId.putIfAbsent(reportId, () => <String, int>{})[metricId] =
-          value as int;
-    }
-    return valuesByReportId;
+        final valuesByReportId = <String, Map<String, int>>{
+          for (final reportId in reportIds) reportId: <String, int>{},
+        };
+        for (final row in data as List) {
+          final map = Map<String, dynamic>.from(row as Map);
+          final reportId = map['report_id']?.toString();
+          final metricId = map['metric_id']?.toString();
+          final value = map['value'];
+          if (reportId == null || metricId == null || value == null) {
+            continue;
+          }
+          valuesByReportId
+              .putIfAbsent(reportId, () => <String, int>{})[metricId] =
+              value as int;
+        }
+        return valuesByReportId;
+      },
+      describeResult: (values) =>
+          'rows=${values.values.fold<int>(0, (sum, row) => sum + row.length)}',
+    );
   }
 
   @override
