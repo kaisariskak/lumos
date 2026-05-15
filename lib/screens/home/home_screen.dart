@@ -178,7 +178,6 @@ class HomeScreenState extends State<HomeScreen> {
           _sections = sections;
           _adminPersonalMetrics = personalMetrics;
           _adminPeriods = adminPeriods;
-          _adminReport = null;
         });
         unawaited(_loadAdminReports(version, sections, adminPeriods));
       }
@@ -232,48 +231,71 @@ class HomeScreenState extends State<HomeScreen> {
         '[PERF] START HomeScreen._loadSectionReports group=${section.group.id}',
       );
     }
-    final month = section.viewMonth;
-    final year = section.viewYear;
 
-    // Current period reports
     if (section.isPeriodMode) {
-      final period = section
-          .periods[section.periodIdx.clamp(0, section.periods.length - 1)];
-      final reports = await _reportRepo.getGroupReportsByPeriod(
-        groupId: section.group.id,
-        periodId: period.id,
+      final periodIdx = section.periodIdx.clamp(0, section.periods.length - 1);
+      final currentPeriod = section.periods[periodIdx];
+      final trendPeriods = section.periods.take(4).toList();
+
+      // Current period may already be in the trend window — fetch each unique
+      // period once, then reuse the result for both current + trend slots.
+      final uniquePeriodsById = <String, IbadatPeriod>{};
+      for (final p in trendPeriods) {
+        uniquePeriodsById[p.id] = p;
+      }
+      uniquePeriodsById[currentPeriod.id] = currentPeriod;
+      final uniquePeriods = uniquePeriodsById.values.toList();
+
+      final results = await Future.wait(
+        uniquePeriods.map(
+          (p) => _reportRepo.getGroupReportsByPeriod(
+            groupId: section.group.id,
+            periodId: p.id,
+          ),
+        ),
       );
-      section.monthlyReports = {for (final r in reports) r.userId: r};
+      final reportsByPeriodId = <String, List<IbadatReport>>{
+        for (var i = 0; i < uniquePeriods.length; i++)
+          uniquePeriods[i].id: results[i],
+      };
+
+      section.monthlyReports = {
+        for (final r in reportsByPeriodId[currentPeriod.id] ?? const [])
+          r.userId: r,
+      };
+      section.trendReports = {
+        for (final p in trendPeriods)
+          p.startDate.month: {
+            for (final r in reportsByPeriodId[p.id] ?? const []) r.userId: r,
+          },
+      };
     } else {
-      final reports = await _reportRepo.getGroupReports(
-        groupId: section.group.id,
-        month: month,
-        year: year,
+      final month = section.viewMonth;
+      final year = section.viewYear;
+      final monthsAndYears = _lastFourMonths(month, year);
+
+      final results = await Future.wait(
+        monthsAndYears.map(
+          (pair) => _reportRepo.getGroupReports(
+            groupId: section.group.id,
+            month: pair.$1,
+            year: pair.$2,
+          ),
+        ),
       );
-      section.monthlyReports = {for (final r in reports) r.userId: r};
+
+      // _lastFourMonths returns oldest→newest, so current = last entry.
+      section.monthlyReports = {
+        for (final r in results.last) r.userId: r,
+      };
+      section.trendReports = {
+        for (var i = 0; i < monthsAndYears.length; i++)
+          monthsAndYears[i].$1: {
+            for (final r in results[i]) r.userId: r,
+          },
+      };
     }
 
-    // Trend: last 4 periods or last 4 months
-    final Map<int, Map<String, IbadatReport>> trend = {};
-    if (section.isPeriodMode) {
-      for (final p in section.periods.take(4)) {
-        final rs = await _reportRepo.getGroupReportsByPeriod(
-          groupId: section.group.id,
-          periodId: p.id,
-        );
-        trend[p.startDate.month] = {for (final r in rs) r.userId: r};
-      }
-    } else {
-      for (final (m, y) in _lastFourMonths(month, year)) {
-        final rs = await _reportRepo.getGroupReports(
-          groupId: section.group.id,
-          month: m,
-          year: y,
-        );
-        trend[m] = {for (final r in rs) r.userId: r};
-      }
-    }
-    section.trendReports = trend;
     if (perfLogsEnabled) {
       debugPrint(
         '[PERF] END HomeScreen._loadSectionReports group=${section.group.id} '
@@ -370,8 +392,6 @@ class HomeScreenState extends State<HomeScreen> {
           _userPeriods = periods;
           _viewMonth = viewMonth;
           _viewYear = viewYear;
-          _userMonthlyReports = {};
-          _userTrendReports = {};
         });
         unawaited(
           _loadUserReports(
@@ -396,43 +416,61 @@ class HomeScreenState extends State<HomeScreen> {
     await traceAsync('HomeScreen._loadUserReports', () async {
       final isPeriodMode = periods.isNotEmpty;
       final monthly = <String, IbadatReport>{};
-      if (isPeriodMode) {
-        final period = periods[periodIdx.clamp(0, periods.length - 1)];
-        final r = await _reportRepo.getReportByPeriod(
-          userId: widget.profile.id,
-          groupId: widget.group!.id,
-          periodId: period.id,
-        );
-        if (r != null) monthly[r.userId] = r;
-      } else {
-        final r = await _reportRepo.getReport(
-          userId: widget.profile.id,
-          groupId: widget.group!.id,
-          month: viewMonth,
-          year: viewYear,
-        );
-        if (r != null) monthly[r.userId] = r;
-      }
-
       final trend = <int, Map<String, IbadatReport>>{};
+
       if (isPeriodMode) {
-        for (final p in periods.take(4)) {
-          final tr = await _reportRepo.getReportByPeriod(
-            userId: widget.profile.id,
-            groupId: widget.group!.id,
-            periodId: p.id,
-          );
-          trend[p.startDate.month] = tr != null ? {tr.userId: tr} : {};
+        final clampedIdx = periodIdx.clamp(0, periods.length - 1);
+        final currentPeriod = periods[clampedIdx];
+        final trendPeriods = periods.take(4).toList();
+
+        final uniquePeriodsById = <String, IbadatPeriod>{};
+        for (final p in trendPeriods) {
+          uniquePeriodsById[p.id] = p;
+        }
+        uniquePeriodsById[currentPeriod.id] = currentPeriod;
+        final uniquePeriods = uniquePeriodsById.values.toList();
+
+        final results = await Future.wait(
+          uniquePeriods.map(
+            (p) => _reportRepo.getReportByPeriod(
+              userId: widget.profile.id,
+              groupId: widget.group!.id,
+              periodId: p.id,
+            ),
+          ),
+        );
+        final reportByPeriodId = <String, IbadatReport?>{
+          for (var i = 0; i < uniquePeriods.length; i++)
+            uniquePeriods[i].id: results[i],
+        };
+
+        final current = reportByPeriodId[currentPeriod.id];
+        if (current != null) monthly[current.userId] = current;
+
+        for (final p in trendPeriods) {
+          final r = reportByPeriodId[p.id];
+          trend[p.startDate.month] = r != null ? {r.userId: r} : {};
         }
       } else {
-        for (final (m, y) in _lastFourMonths(viewMonth, viewYear)) {
-          final tr = await _reportRepo.getReport(
-            userId: widget.profile.id,
-            groupId: widget.group!.id,
-            month: m,
-            year: y,
-          );
-          trend[m] = tr != null ? {tr.userId: tr} : {};
+        final monthsAndYears = _lastFourMonths(viewMonth, viewYear);
+        final results = await Future.wait(
+          monthsAndYears.map(
+            (pair) => _reportRepo.getReport(
+              userId: widget.profile.id,
+              groupId: widget.group!.id,
+              month: pair.$1,
+              year: pair.$2,
+            ),
+          ),
+        );
+
+        // _lastFourMonths returns oldest→newest; current = last entry.
+        final current = results.last;
+        if (current != null) monthly[current.userId] = current;
+
+        for (var i = 0; i < monthsAndYears.length; i++) {
+          final r = results[i];
+          trend[monthsAndYears[i].$1] = r != null ? {r.userId: r} : {};
         }
       }
 
