@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class LocaleProvider extends ValueNotifier<Locale> {
   static final LocaleProvider instance =
-      LocaleProvider._internal(const Locale('kk'));
+      LocaleProvider._internal(const Locale('ru'));
 
   LocaleProvider._internal(super.value);
 
@@ -11,7 +11,7 @@ class LocaleProvider extends ValueNotifier<Locale> {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    final lang = prefs.getString(_key) ?? 'kk';
+    final lang = prefs.getString(_key) ?? 'ru';
     value = Locale(lang);
   }
 

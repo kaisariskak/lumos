@@ -68,7 +68,14 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    _loginCtrl.addListener(_handleLoginChanged);
+  }
+
+  @override
   void dispose() {
+    _loginCtrl.removeListener(_handleLoginChanged);
     _loginCtrl.dispose();
     _passwordCtrl.dispose();
     _nicknameCtrl.dispose();
@@ -83,6 +90,14 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     } on FormatException {
       return false;
     }
+  }
+
+  bool get _loginLooksLikeEmail => _loginCtrl.text.trim().contains('@');
+
+  String? _loginValidationError(AppStrings s, {required bool showEmpty}) {
+    if (_loginLooksLikeEmail) return s.authLoginEmailInvalid;
+    if (_loginCtrl.text.trim().isEmpty && !showEmpty) return null;
+    return _loginValid ? null : s.authLoginInvalid;
   }
 
   bool get _passwordValid => _passwordCtrl.text.length >= 6;
@@ -107,10 +122,17 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   }
 
   void _syncValidation() {
-    if (_loginError != null && _loginValid) _loginError = null;
+    _loginError = _loginValidationError(S.of(context), showEmpty: false);
     if (_passwordError != null && _passwordValid) _passwordError = null;
     if (_nicknameError != null && _nicknameValid) _nicknameError = null;
     if (_codeError != null && _codeValid) _codeError = null;
+  }
+
+  void _handleLoginChanged() {
+    if (!mounted) return;
+    setState(() {
+      _loginError = _loginValidationError(S.of(context), showEmpty: false);
+    });
   }
 
   Future<void> _rollbackFailedUsernameRegistration(bool authWasCreated) async {
@@ -128,7 +150,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
     final s = S.of(context);
     setState(() {
       _syncValidation();
-      _loginError = _loginValid ? null : s.authLoginInvalid;
+      _loginError = _loginValidationError(s, showEmpty: true);
       _passwordError = _passwordValid ? null : s.authPasswordInvalid;
       if (_registerMode) {
         _nicknameError = _nicknameValid ? null : s.errorNicknameInvalid;

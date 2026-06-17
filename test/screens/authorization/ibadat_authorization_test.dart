@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:reportdeepen/repositories/profile_repository.dart';
 import 'package:reportdeepen/screens/authorization/ibadat_authorization.dart';
 
@@ -10,9 +11,22 @@ void main() {
     return Completer<void>().future;
   }
 
+  Finder inputInside(String key) {
+    return find.descendant(
+      of: find.byKey(ValueKey(key)),
+      matching: find.byType(EditableText),
+    );
+  }
+
   Widget app() {
     return const MaterialApp(
       locale: Locale('ru'),
+      supportedLocales: [Locale('ru')],
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: IbadatAuthorization(),
     );
   }
@@ -20,6 +34,12 @@ void main() {
   Widget appWithSignIn(Future<void> Function(String, String) signIn) {
     return MaterialApp(
       locale: const Locale('ru'),
+      supportedLocales: const [Locale('ru')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: IbadatAuthorization(signInWithPassword: signIn),
     );
   }
@@ -37,6 +57,12 @@ void main() {
   }) {
     return MaterialApp(
       locale: const Locale('ru'),
+      supportedLocales: const [Locale('ru')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: IbadatAuthorization(
         registerWithPassword: register,
         preflightRegistration: preflight,
@@ -99,6 +125,25 @@ void main() {
     await tester.pump();
 
     expect(submit().onPressed, isNotNull);
+  });
+
+  testWidgets('registration shows a clear error when login is an email',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await tester.tap(find.byKey(const ValueKey('auth-mode-toggle')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(inputInside('auth-login-field'), 'user@mail.com');
+    await tester.pumpAndSettle();
+
+    expect(find.text('user@mail.com'), findsOneWidget);
+    final loginField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(const ValueKey('auth-login-field')),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(loginField.decoration?.errorText, 'Введите логин, не email');
   });
 
   testWidgets('password sign-in loading does not show Google loading state',

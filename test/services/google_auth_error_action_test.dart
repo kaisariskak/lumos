@@ -16,6 +16,31 @@ void main() {
       );
     });
 
+    test('uses browser fallback for Android developer configuration errors', () {
+      const exception = GoogleSignInException(
+        code: GoogleSignInExceptionCode.unknownError,
+        description:
+            'com.google.android.gms.common.api.ApiException: 10: DEVELOPER_ERROR',
+      );
+
+      expect(
+        googleAuthErrorActionFor(exception),
+        GoogleAuthErrorAction.browserOAuthFallback,
+      );
+    });
+
+    test('uses browser fallback for Google provider configuration errors', () {
+      const exception = GoogleSignInException(
+        code: GoogleSignInExceptionCode.providerConfigurationError,
+        description: 'The underlying auth SDK is unavailable or misconfigured',
+      );
+
+      expect(
+        googleAuthErrorActionFor(exception),
+        GoogleAuthErrorAction.browserOAuthFallback,
+      );
+    });
+
     test('treats user cancel as cancel', () {
       const exception = GoogleSignInException(
         code: GoogleSignInExceptionCode.canceled,

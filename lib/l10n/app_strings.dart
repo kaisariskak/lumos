@@ -948,6 +948,9 @@ extension AppStringsX on AppStrings {
   String get authLoginInvalid => languageCode == 'ru'
       ? 'Логин: 3-32 символа, латиница, цифры, точка, тире или _'
       : 'Логин: 3-32 таңба, латын әріптері, цифрлар, нүкте, тире немесе _';
+  String get authLoginEmailInvalid => languageCode == 'ru'
+      ? 'Введите логин, не email'
+      : 'Email емес, логин енгізіңіз';
   String get authPasswordInvalid => languageCode == 'ru'
       ? 'Пароль должен быть не короче 6 символов'
       : 'Құпиясөз кемінде 6 таңба болуы керек';

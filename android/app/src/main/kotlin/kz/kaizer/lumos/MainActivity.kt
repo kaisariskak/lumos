@@ -1,4 +1,4 @@
-package com.example.reportdeepen
+package kz.kaizer.lumos
 
 import android.content.Intent
 import android.provider.Settings

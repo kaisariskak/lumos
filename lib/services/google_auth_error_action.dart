@@ -12,8 +12,12 @@ GoogleAuthErrorAction googleAuthErrorActionFor(GoogleSignInException error) {
       description.contains('no credential') ||
       description.contains('no provider') ||
       description.contains('getcredentialasync');
+  final isNativeProviderMisconfigured =
+      error.code == GoogleSignInExceptionCode.providerConfigurationError ||
+      description.contains('developer_error') ||
+      description.contains('apiexception: 10');
 
-  if (isCredentialManagerNoCredential) {
+  if (isCredentialManagerNoCredential || isNativeProviderMisconfigured) {
     return GoogleAuthErrorAction.browserOAuthFallback;
   }
 

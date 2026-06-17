@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.reportdeepen"
+    namespace = "kz.kaizer.lumos"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -32,10 +32,11 @@ android {
     defaultConfig {
         applicationId = "kz.kaizer.lumos"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 35
+        versionCode = 5
+        versionName = "1.0.5"
     }
+    
 
     signingConfigs {
         create("release") {
