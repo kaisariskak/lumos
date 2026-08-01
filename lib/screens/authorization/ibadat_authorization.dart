@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -7,26 +8,28 @@ import '../../config/app_config.dart';
 import '../../l10n/app_strings.dart';
 import '../../repositories/profile_repository.dart';
 import '../../services/auth_error_message.dart';
+import '../../services/apple_sign_in_service.dart';
 import '../../services/google_auth_error_action.dart';
 import '../../services/google_sign_in_service.dart';
 import '../../services/username_auth_mapper.dart';
 
 typedef PasswordSignIn = Future<void> Function(String login, String password);
-typedef PasswordRegistration = Future<void> Function(
-  String login,
-  String password,
-  String nickname,
-  String code,
-);
-typedef RegistrationPreflight = Future<void> Function(
-  String nickname,
-  String code,
-);
+typedef PasswordRegistration =
+    Future<void> Function(
+      String login,
+      String password,
+      String nickname,
+      String code,
+    );
+typedef RegistrationPreflight =
+    Future<void> Function(String nickname, String code);
 
-enum _AuthLoadingTarget { password, google }
+enum _AuthLoadingTarget { password, google, apple }
 
 class IbadatAuthorization extends StatefulWidget {
   final PasswordSignIn? signInWithPassword;
+  final Future<void> Function()? signInWithApple;
+  final TargetPlatform? applePlatform;
   final PasswordRegistration? registerWithPassword;
   final RegistrationPreflight? preflightRegistration;
   final Future<void> Function()? rollbackFailedRegistration;
@@ -37,6 +40,8 @@ class IbadatAuthorization extends StatefulWidget {
   const IbadatAuthorization({
     super.key,
     this.signInWithPassword,
+    this.signInWithApple,
+    this.applePlatform,
     this.registerWithPassword,
     this.preflightRegistration,
     this.rollbackFailedRegistration,
@@ -105,6 +110,11 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   bool get _isLoading => _loadingTarget != null;
   bool get _isPasswordLoading => _loadingTarget == _AuthLoadingTarget.password;
   bool get _isGoogleLoading => _loadingTarget == _AuthLoadingTarget.google;
+  bool get _isAppleLoading => _loadingTarget == _AuthLoadingTarget.apple;
+  TargetPlatform get _applePlatform =>
+      widget.applePlatform ?? defaultTargetPlatform;
+  bool get _supportsApple =>
+      appleSignInFlowFor(_applePlatform) != AppleSignInFlow.unsupported;
 
   bool get _nicknameValid {
     final nickname = _nicknameCtrl.text.trim();
@@ -197,10 +207,7 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
             throw AuthException(s.authRegistrationNeedsSession);
           }
 
-          await repo.registerWithInvite(
-            nickname: nickname,
-            code: code,
-          );
+          await repo.registerWithInvite(nickname: nickname, code: code);
         }
         widget.onUsernameRegistrationCompleted?.call();
       } else {
@@ -311,7 +318,8 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
   }
 
   void _showGoogleAuthError(String message, String? statusCode) {
-    final isNotRegistered = message.contains('Database error saving new user') ||
+    final isNotRegistered =
+        message.contains('Database error saving new user') ||
         message.contains('unexpected_failure') ||
         statusCode == '422';
     final s = S.of(context);
@@ -329,6 +337,44 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
       OAuthProvider.google,
       redirectTo: AppConfig.supabaseOAuthRedirectUrl,
       queryParams: const {'prompt': 'select_account'},
+    );
+  }
+
+  Future<void> _signInWithApple() async {
+    if (_isLoading) return;
+    setState(() => _loadingTarget = _AuthLoadingTarget.apple);
+    try {
+      final injectedSignIn = widget.signInWithApple;
+      if (injectedSignIn != null) {
+        await injectedSignIn();
+      } else {
+        await AppleSignInService().signIn(_applePlatform);
+      }
+    } on AppleSignInCanceled {
+      return;
+    } on AuthException catch (error) {
+      if (!mounted) return;
+      _showAppleAuthError(error.message, error.statusCode);
+    } catch (error) {
+      if (!mounted) return;
+      _showAppleAuthError(error.toString(), null);
+    } finally {
+      if (mounted) setState(() => _loadingTarget = null);
+    }
+  }
+
+  void _showAppleAuthError(String message, String? statusCode) {
+    final isNotRegistered =
+        message.contains('Database error saving new user') ||
+        message.contains('unexpected_failure') ||
+        statusCode == '422';
+    final strings = S.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isNotRegistered ? strings.notRegistered : message),
+        backgroundColor: isNotRegistered ? const Color(0xFFDC2626) : null,
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 
@@ -418,6 +464,37 @@ class _IbadatAuthorizationState extends State<IbadatAuthorization> {
                         ),
                       ),
                     ),
+                    if (_supportsApple) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('auth-apple-button'),
+                          onPressed: _isLoading ? null : _signInWithApple,
+                          icon: _isAppleLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFFE8F3EE),
+                                  ),
+                                )
+                              : const _AppleIcon(),
+                          label: Text(
+                            _isAppleLoading ? s.signingIn : s.signInApple,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFE8F3EE),
+                            side: const BorderSide(color: Color(0x334ADE80)),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -771,6 +848,15 @@ class _GoogleIcon extends StatelessWidget {
       height: 20,
       child: CustomPaint(painter: _GooglePainter()),
     );
+  }
+}
+
+class _AppleIcon extends StatelessWidget {
+  const _AppleIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Icon(Icons.apple, size: 22, color: Color(0xFFE8F3EE));
   }
 }
 
