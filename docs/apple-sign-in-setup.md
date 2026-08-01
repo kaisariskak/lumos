@@ -70,4 +70,3 @@ Apple OAuth client secret для Android необходимо обновлять
 
 - Нативный Google Sign-In продолжает работать.
 - При ошибке Android Credential Manager браузерный Google OAuth fallback продолжает работать.
-
