@@ -672,7 +672,10 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _selectedPeriod?.dateRangeLabelLocalized(S.of(context).languageCode) ?? WeekUtils.currentMonthLabel(),
+                              _selectedPeriod?.dateRangeLabelLocalized(S.of(context).languageCode) ??
+                                  WeekUtils.currentMonthLabel(
+                                    languageCode: S.of(context).languageCode,
+                                  ),
                               style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                             ),
                             const SizedBox(height: 10),

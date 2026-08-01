@@ -676,6 +676,7 @@ class HomeScreenState extends State<HomeScreen> {
                     weekLabel: WeekUtils.monthLabel(
                       sec?.viewMonth ?? now.month,
                       sec?.viewYear ?? now.year,
+                      languageCode: s.languageCode,
                     ),
                     isWeekMode: false,
                     monthReports: sec != null
@@ -1053,6 +1054,7 @@ class HomeScreenState extends State<HomeScreen> {
                         weekLabel: WeekUtils.monthLabel(
                           section.viewMonth,
                           section.viewYear,
+                          languageCode: s.languageCode,
                         ),
                         isWeekMode: false,
                         monthReports: section.trendReports.values
@@ -1273,7 +1275,11 @@ class HomeScreenState extends State<HomeScreen> {
                     icon: Icon(Icons.chevron_left, color: accent.accentLight),
                   ),
                   Text(
-                    WeekUtils.monthLabel(_viewMonth, _viewYear),
+                    WeekUtils.monthLabel(
+                      _viewMonth,
+                      _viewYear,
+                      languageCode: s.languageCode,
+                    ),
                     style: const TextStyle(
                       color: Color(0xFFE2E8F0),
                       fontWeight: FontWeight.w700,
@@ -1323,7 +1329,11 @@ class HomeScreenState extends State<HomeScreen> {
                   profile: me.first,
                   groupId: widget.group!.id,
                   report: _userMonthlyReports[me.first.id],
-                  weekLabel: WeekUtils.monthLabel(_viewMonth, _viewYear),
+                  weekLabel: WeekUtils.monthLabel(
+                    _viewMonth,
+                    _viewYear,
+                    languageCode: s.languageCode,
+                  ),
                   isWeekMode: false,
                   monthReports: _userTrendReports.values
                       .map((m) => m[me.first.id])
