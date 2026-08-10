@@ -84,7 +84,8 @@ class _AccountSectionState extends State<AccountSection> {
         widget.strings.deleteAccountUnknownFailure,
     };
     final appleNote =
-        result.status == AccountDeletionStatus.deleted && !result.appleRevoked
+        result.status == AccountDeletionStatus.deleted &&
+            result.showAppleManualRevokeNote
             ? widget.strings.deleteAccountAppleManualRevoke
             : null;
 

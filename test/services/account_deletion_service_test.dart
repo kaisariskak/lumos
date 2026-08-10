@@ -29,6 +29,7 @@ void main() {
 
         expect(result.status, AccountDeletionStatus.deleted);
         expect(result.appleRevoked, isFalse);
+        expect(result.showAppleManualRevokeNote, isFalse);
         expect(calls, ['accessToken', 'invoke:jwt-1']);
 
         await service.finishDeletedAccountSession();
@@ -36,6 +37,44 @@ void main() {
         expect(calls, ['accessToken', 'invoke:jwt-1', 'cleanup']);
       },
     );
+
+    test('Apple provider success requests manual revoke note', () async {
+      final service = AccountDeletionService(
+        currentAccessToken: () => 'jwt-1',
+        currentProvider: () => 'apple',
+        invokeDeleteAccount: ({required accessToken}) async {
+          return const AccountDeletionFunctionResponse(
+            status: 200,
+            body: {'ok': true, 'appleRevoked': false},
+          );
+        },
+        localCleanup: () async {},
+      );
+
+      final result = await service.deleteAccount();
+
+      expect(result.status, AccountDeletionStatus.deleted);
+      expect(result.showAppleManualRevokeNote, isTrue);
+    });
+
+    test('Google provider success does not request manual Apple note', () async {
+      final service = AccountDeletionService(
+        currentAccessToken: () => 'jwt-1',
+        currentProvider: () => 'google',
+        invokeDeleteAccount: ({required accessToken}) async {
+          return const AccountDeletionFunctionResponse(
+            status: 200,
+            body: {'ok': true, 'appleRevoked': false},
+          );
+        },
+        localCleanup: () async {},
+      );
+
+      final result = await service.deleteAccount();
+
+      expect(result.status, AccountDeletionStatus.deleted);
+      expect(result.showAppleManualRevokeNote, isFalse);
+    });
 
     test('no session returns noSession and does not call function', () async {
       final calls = <String>[];

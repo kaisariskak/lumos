@@ -142,6 +142,7 @@ void main() {
           onDeleteAccount: () async => const AccountDeletionResult(
             status: AccountDeletionStatus.deleted,
             appleRevoked: false,
+            showAppleManualRevokeNote: true,
           ),
           onDeleted: () => deletedCount++,
           onFinishDeletedAccountSession: () async => finishCount++,
@@ -165,6 +166,38 @@ void main() {
       await tester.pump(const Duration(milliseconds: 900));
 
       expect(finishCount, 1);
+    },
+  );
+
+  testWidgets(
+    'deleted non-Apple account does not show Apple manual revoke message',
+    (tester) async {
+      var deletedCount = 0;
+
+      await tester.pumpWidget(
+        buildSubject(
+          onDeleteAccount: () async => const AccountDeletionResult(
+            status: AccountDeletionStatus.deleted,
+            appleRevoked: false,
+          ),
+          onDeleted: () => deletedCount++,
+          onFinishDeletedAccountSession: () async {},
+        ),
+      );
+
+      await tester.tap(find.text('РЈРґР°Р»РёС‚СЊ Р°РєРєР°СѓРЅС‚'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('РЈРґР°Р»РёС‚СЊ РЅР°РІСЃРµРіРґР°'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('РђРєРєР°СѓРЅС‚ СѓРґР°Р»С‘РЅ'), findsOneWidget);
+      expect(
+        find.text(
+          'Р”РѕСЃС‚СѓРї С‡РµСЂРµР· Apple С‚Р°РєР¶Рµ РјРѕР¶РЅРѕ РѕС‚РѕР·РІР°С‚СЊ РІСЂСѓС‡РЅСѓСЋ РІ РЅР°СЃС‚СЂРѕР№РєР°С… Apple ID.',
+        ),
+        findsNothing,
+      );
+      expect(deletedCount, 1);
     },
   );
 }

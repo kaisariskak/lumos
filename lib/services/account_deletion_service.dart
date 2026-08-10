@@ -14,10 +14,12 @@ enum AccountDeletionStatus {
 class AccountDeletionResult {
   final AccountDeletionStatus status;
   final bool appleRevoked;
+  final bool showAppleManualRevokeNote;
 
   const AccountDeletionResult({
     required this.status,
     this.appleRevoked = false,
+    this.showAppleManualRevokeNote = false,
   });
 }
 
@@ -32,6 +34,7 @@ class AccountDeletionFunctionResponse {
 }
 
 typedef AccountDeletionTokenReader = String? Function();
+typedef AccountDeletionProviderReader = String? Function();
 typedef AccountDeletionFunctionInvoker =
     Future<AccountDeletionFunctionResponse> Function({
       required String accessToken,
@@ -40,22 +43,36 @@ typedef AccountDeletionCleanup = Future<void> Function();
 
 class AccountDeletionService {
   final AccountDeletionTokenReader _currentAccessToken;
+  final AccountDeletionProviderReader _currentProvider;
   final AccountDeletionFunctionInvoker _invokeDeleteAccount;
   final AccountDeletionCleanup _localCleanup;
 
   AccountDeletionService({
     AccountDeletionTokenReader? currentAccessToken,
+    AccountDeletionProviderReader? currentProvider,
     AccountDeletionFunctionInvoker? invokeDeleteAccount,
     AccountDeletionCleanup? localCleanup,
   }) : _currentAccessToken =
            currentAccessToken ??
            (() => Supabase.instance.client.auth.currentSession?.accessToken),
+       _currentProvider =
+           currentProvider ??
+           (() {
+             final provider = Supabase
+                 .instance
+                 .client
+                 .auth
+                 .currentUser
+                 ?.appMetadata['provider'];
+             return provider is String ? provider : null;
+           }),
        _invokeDeleteAccount = invokeDeleteAccount ?? _invokeSupabaseFunction,
        _localCleanup =
            localCleanup ?? AuthLogoutService.finishDeletedAccountSession;
 
   Future<AccountDeletionResult> deleteAccount() async {
     final accessToken = _currentAccessToken();
+    final isAppleProvider = _currentProvider() == 'apple';
     if (accessToken == null || accessToken.isEmpty) {
       return const AccountDeletionResult(
         status: AccountDeletionStatus.noSession,
@@ -81,6 +98,8 @@ class AccountDeletionService {
       return AccountDeletionResult(
         status: AccountDeletionStatus.deleted,
         appleRevoked: body?['appleRevoked'] == true,
+        showAppleManualRevokeNote:
+            isAppleProvider && body?['appleRevoked'] != true,
       );
     }
 
