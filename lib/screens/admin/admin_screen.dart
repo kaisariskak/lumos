@@ -18,7 +18,9 @@ import '../../repositories/payment_repository.dart';
 import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../reporting/report_progress.dart';
+import '../../services/account_deletion_service.dart';
 import '../../services/pin_service.dart';
+import '../../widgets/account_section.dart';
 import '../pin/pin_screen.dart';
 
 class _AdminPalette {
@@ -63,6 +65,7 @@ class _AdminScreenState extends State<AdminScreen> {
   late final PaymentRepository _paymentRepo;
   late final InviteCodeRepository _codeRepo;
   late final GroupMetricRepository _metricRepo;
+  final _accountDeletionService = AccountDeletionService();
   List<GroupMetric> _groupMetrics = [];
 
   // Super admin data
@@ -4284,25 +4287,13 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: widget.onLogout,
-        icon: const Icon(Icons.logout, size: 18),
-        label: Text(S.of(context).logout),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFFEF4444),
-          backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.08),
-          side: BorderSide(
-            color: const Color(0xFFEF4444).withValues(alpha: 0.45),
-            width: 1,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      ),
+    return AccountSection(
+      strings: S.of(context),
+      onLogout: widget.onLogout,
+      onDeleteAccount: _accountDeletionService.deleteAccount,
+      onFinishDeletedAccountSession:
+          _accountDeletionService.finishDeletedAccountSession,
+      canDeleteAccount: !widget.profile.isSuperAdmin,
     );
   }
 }

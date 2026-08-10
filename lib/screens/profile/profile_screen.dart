@@ -5,9 +5,11 @@ import '../../l10n/app_strings.dart';
 import '../../l10n/locale_provider.dart';
 import '../../models/ibadat_group.dart';
 import '../../models/ibadat_profile.dart';
+import '../../services/account_deletion_service.dart';
 import '../../services/pin_service.dart';
 import '../../services/username_auth_mapper.dart';
 import '../../theme/accent_provider.dart';
+import '../../widgets/account_section.dart';
 import '../pin/pin_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -29,6 +31,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _accountDeletionService = AccountDeletionService();
   bool _hasPin = false;
 
   @override
@@ -377,21 +380,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Logout button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: widget.onLogout,
-              icon: const Icon(Icons.logout, size: 18),
-              label: Text(s.logout),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFEF4444),
-                side: const BorderSide(color: Color(0xFFEF4444), width: 1),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-            ),
+          AccountSection(
+            strings: s,
+            onLogout: widget.onLogout,
+            onDeleteAccount: _accountDeletionService.deleteAccount,
+            onFinishDeletedAccountSession:
+                _accountDeletionService.finishDeletedAccountSession,
+            canDeleteAccount: !widget.profile.isSuperAdmin,
           ),
         ],
       ),

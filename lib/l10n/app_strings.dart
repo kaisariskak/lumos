@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 class AppStrings {
   final String languageCode;
 
+  static AppStrings get kk => _kk;
+  static AppStrings get ru => _ru;
+
   // ── General ────────────────────────────────────────────
   final String appTitle;
   final String back;
@@ -57,6 +60,20 @@ class AppStrings {
   final String noGroupSelected;
   final String selectGroupBtn;
   final String logout;
+  final String accountSectionTitle;
+  final String signOutOfAccount;
+  final String deleteAccount;
+  final String deleteAccountTitle;
+  final String deleteAccountBody;
+  final String deleteForever;
+  final String deletingAccount;
+  final String deleteAccountSuccess;
+  final String deleteAccountNoSession;
+  final String deleteAccountSuperAdminForbidden;
+  final String deleteAccountGroupOwnershipBlocked;
+  final String deleteAccountRetryableFailure;
+  final String deleteAccountUnknownFailure;
+  final String deleteAccountAppleManualRevoke;
 
   // ── Profile ────────────────────────────────────────────
   final String groupLabel;
@@ -297,6 +314,20 @@ class AppStrings {
     required this.noGroupSelected,
     required this.selectGroupBtn,
     required this.logout,
+    required this.accountSectionTitle,
+    required this.signOutOfAccount,
+    required this.deleteAccount,
+    required this.deleteAccountTitle,
+    required this.deleteAccountBody,
+    required this.deleteForever,
+    required this.deletingAccount,
+    required this.deleteAccountSuccess,
+    required this.deleteAccountNoSession,
+    required this.deleteAccountSuperAdminForbidden,
+    required this.deleteAccountGroupOwnershipBlocked,
+    required this.deleteAccountRetryableFailure,
+    required this.deleteAccountUnknownFailure,
+    required this.deleteAccountAppleManualRevoke,
     required this.groupLabel,
     required this.language,
     required this.colorTheme,
@@ -521,6 +552,25 @@ const _kk = AppStrings(
   noGroupSelected: 'Топ таңдалмаған',
   selectGroupBtn: 'Топ таңдау',
   logout: 'Шығу',
+  accountSectionTitle: 'Аккаунт',
+  signOutOfAccount: 'Аккаунттан шығу',
+  deleteAccount: 'Аккаунтты жою',
+  deleteAccountTitle: 'Аккаунтты жою?',
+  deleteAccountBody:
+      'Аккаунт және оған байланысты деректер қалпына келтіру мүмкіндігінсіз жойылады.',
+  deleteForever: 'Біржола жою',
+  deletingAccount: 'Аккаунт жойылуда...',
+  deleteAccountSuccess: 'Аккаунт жойылды',
+  deleteAccountNoSession: 'Сессия табылмады. Қайта кіріңіз.',
+  deleteAccountSuperAdminForbidden:
+      'Бұл рөл үшін аккаунтты жою қолжетімді емес.',
+  deleteAccountGroupOwnershipBlocked:
+      'Аккаунтты жою үшін алдымен топтарды басқа администраторға беріңіз.',
+  deleteAccountRetryableFailure:
+      'Аккаунтты жою мүмкін болмады. Кейін қайталап көріңіз.',
+  deleteAccountUnknownFailure: 'Аккаунтты жою кезінде қате пайда болды.',
+  deleteAccountAppleManualRevoke:
+      'Apple арқылы кіру рұқсатын Apple ID баптауларынан қолмен қайтарып алуға болады.',
 
   groupLabel: 'Топ',
   language: 'Тіл',
@@ -750,6 +800,25 @@ const _ru = AppStrings(
   noGroupSelected: 'Группа не выбрана',
   selectGroupBtn: 'Выбрать группу',
   logout: 'Выйти',
+  accountSectionTitle: 'Аккаунт',
+  signOutOfAccount: 'Выйти из аккаунта',
+  deleteAccount: 'Удалить аккаунт',
+  deleteAccountTitle: 'Удалить аккаунт?',
+  deleteAccountBody:
+      'Аккаунт и связанные с ним данные будут удалены без возможности восстановления.',
+  deleteForever: 'Удалить навсегда',
+  deletingAccount: 'Удаляем аккаунт...',
+  deleteAccountSuccess: 'Аккаунт удалён',
+  deleteAccountNoSession: 'Сессия не найдена. Войдите снова.',
+  deleteAccountSuperAdminForbidden:
+      'Удаление аккаунта недоступно для этой роли.',
+  deleteAccountGroupOwnershipBlocked:
+      'Перед удалением аккаунта передайте группы другому администратору.',
+  deleteAccountRetryableFailure:
+      'Не удалось удалить аккаунт. Попробуйте позже.',
+  deleteAccountUnknownFailure: 'При удалении аккаунта произошла ошибка.',
+  deleteAccountAppleManualRevoke:
+      'Доступ через Apple также можно отозвать вручную в настройках Apple ID.',
 
   groupLabel: 'Группа',
   language: 'Язык',
