@@ -25,6 +25,7 @@ class AppStrings {
   // ── Auth ───────────────────────────────────────────────
   final String appSubtitle;
   final String signInGoogle;
+  final String signInApple;
   final String signingIn;
   final String noPassword;
   final String notRegistered;
@@ -283,6 +284,7 @@ class AppStrings {
     required this.retry,
     required this.appSubtitle,
     required this.signInGoogle,
+    required this.signInApple,
     required this.signingIn,
     required this.noPassword,
     required this.notRegistered,
@@ -518,6 +520,7 @@ const _kk = AppStrings(
 
   appSubtitle: 'Бір апталық Мұхасаба',
   signInGoogle: 'Google арқылы кіру',
+  signInApple: 'Apple арқылы кіру',
   signingIn: 'Кіруде...',
   noPassword: 'Құпиясөз қажет емес',
   notRegistered: 'Сіз жүйеде тіркелмегенсіз. Администраторға хабарласыңыз.',
@@ -525,7 +528,8 @@ const _kk = AppStrings(
   unlock: 'Ашу',
   switchAccount: 'Басқа аккаунтпен кіру',
   accessDenied: 'Жүйеге кіру мүмкін емес',
-  notAllowedDesc: 'Сізді әлі администратор жүйеге тіркемеген. Администраторға хабарласыңыз.',
+  notAllowedDesc:
+      'Сізді әлі администратор жүйеге тіркемеген. Администраторға хабарласыңыз.',
   profileNotLoaded: 'Профиль жүктелмеді',
   googleAccountRequiredTitle: 'Google аккаунты қажет',
   googleAccountRequiredMessage:
@@ -605,7 +609,8 @@ const _kk = AppStrings(
   userAdded: 'топқа қосылды ✅',
   userAutoJoin: 'тіркелді ✅ Жүйеге кіргенде тобына автоматты қосылады.',
   userAlreadyInGroup: 'бұл топта бар',
-  userInOtherGroup: 'жүйеде тіркелген (бұрынғы топта бар). Оны жаңа топқа ауыстыру үшін алдымен бұрынғы топтан шығарыңыз.',
+  userInOtherGroup:
+      'жүйеде тіркелген (бұрынғы топта бар). Оны жаңа топқа ауыстыру үшін алдымен бұрынғы топтан шығарыңыз.',
   removedFromGroup: 'Топтан шығарылды',
   adminRemoved: 'adminдіктен алынды',
   adminAssigned: 'топ admini болды 👑',
@@ -614,7 +619,8 @@ const _kk = AppStrings(
   myAdminsTitle: 'Менің Администраторларым',
   noAdmins: 'Администраторлар жоқ',
   ungroupedUsers: 'Топсыз пайдаланушылар',
-  ungroupedUsersDesc: 'Топтан шығарылған. Тек супер-admin қосымша топ тағайындай алады.',
+  ungroupedUsersDesc:
+      'Топтан шығарылған. Тек супер-admin қосымша топ тағайындай алады.',
   maxValuesTitle: 'Максималды мəндер',
   maxValuesHint: 'Осы мəндер негізінде пайыз есептеледі',
   periodHasReports: 'Бұл кезеңде есептер бар. Алдымен есептерді жойыңыз.',
@@ -679,7 +685,8 @@ const _kk = AppStrings(
   inviteCodeTitle: 'Кіру коды',
   inviteCodeSubtitle: 'Администратордан алған кодыңызды енгізіңіз',
   inviteCodeCheck: 'Тексеру',
-  inviteCodeNotFound: 'Код табылмады немесе мерзімі өтті. Администраторға хабарласыңыз.',
+  inviteCodeNotFound:
+      'Код табылмады немесе мерзімі өтті. Администраторға хабарласыңыз.',
   inviteCodeExpired: 'Кодтың мерзімі өтті. Жаңа код сұраңыз.',
   inviteCodeUsed: 'Бұл код бұрын қолданылған. Жаңа код сұраңыз.',
   generateAdminCode: 'Admin коды жасау (бір рет)',
@@ -705,7 +712,8 @@ const _kk = AppStrings(
   currentWeekLabel: 'Ағымдағы апта',
   weeksAgoSuffix: ' апта бұрын',
   customCatsTitle: 'Көрсеткіштер',
-  customCatsHint: 'Топқа арнайы көрсеткіштер қосыңыз. Олар есеп бетінде пайда болады.',
+  customCatsHint:
+      'Топқа арнайы көрсеткіштер қосыңыз. Олар есеп бетінде пайда болады.',
   customCatAdd: 'Жаңа көрсеткіш қосу',
   customCatNewTitle: 'Жаңа көрсеткіш',
   customCatIconLabel: 'Белгіше:',
@@ -717,11 +725,13 @@ const _kk = AppStrings(
   customCatScoringAmountOptionalLabel: 'Балл есептеу мөлшері (міндетті емес)',
   customCatPointsValueLabel: 'Осы мөлшер үшін балл',
   customCatEmptyTitle: 'Көрсеткіштер әлі қосылмаған',
-  customCatEmptyHint: 'Әкімші бұл топқа көрсеткіштерді қосқан кезде, олар есепте автоматты түрде көрінеді.',
+  customCatEmptyHint:
+      'Әкімші бұл топқа көрсеткіштерді қосқан кезде, олар есепте автоматты түрде көрінеді.',
   metricCannotDeleteTitle: 'Жою мүмкін емес',
   metricCannotDeleteMsg: 'Есептерде қолданылған көрсеткішті жоюға болмайды.',
   metricDeleteTitle: 'Көрсеткішті жою?',
-  adminPersonalMetricsHint: 'Жеке көрсеткіштерді қосыңыз — олар тек «Менің кезеңдерім» есебінде көрінеді.',
+  adminPersonalMetricsHint:
+      'Жеке көрсеткіштерді қосыңыз — олар тек «Менің кезеңдерім» есебінде көрінеді.',
   pinCode: 'PIN код',
   pinEnabled: 'Қосулы',
   pinDisabled: 'Өшірулі',
@@ -766,14 +776,17 @@ const _ru = AppStrings(
 
   appSubtitle: 'Еженедельная Мухасаба',
   signInGoogle: 'Войти через Google',
+  signInApple: 'Войти через Apple',
   signingIn: 'Входим...',
   noPassword: 'Пароль не нужен',
-  notRegistered: 'Вы не зарегистрированы в системе. Обратитесь к администратору.',
+  notRegistered:
+      'Вы не зарегистрированы в системе. Обратитесь к администратору.',
   appLocked: 'Приложение заблокировано',
   unlock: 'Разблокировать',
   switchAccount: 'Войти с другим аккаунтом',
   accessDenied: 'Доступ закрыт',
-  notAllowedDesc: 'Вас ещё не зарегистрировал администратор. Обратитесь к нему.',
+  notAllowedDesc:
+      'Вас ещё не зарегистрировал администратор. Обратитесь к нему.',
   profileNotLoaded: 'Профиль не загружен',
   googleAccountRequiredTitle: 'Нужен Google-аккаунт',
   googleAccountRequiredMessage:
@@ -853,7 +866,8 @@ const _ru = AppStrings(
   userAdded: 'добавлен в группу ✅',
   userAutoJoin: 'зарегистрирован ✅ При входе автоматически добавится в группу.',
   userAlreadyInGroup: 'уже в этой группе',
-  userInOtherGroup: 'зарегистрирован (в другой группе). Сначала удалите из старой группы.',
+  userInOtherGroup:
+      'зарегистрирован (в другой группе). Сначала удалите из старой группы.',
   removedFromGroup: 'Удалён из группы',
   adminRemoved: 'снят с роли администратора',
   adminAssigned: 'назначен администратором 👑',
@@ -862,7 +876,8 @@ const _ru = AppStrings(
   myAdminsTitle: 'Мои администраторы',
   noAdmins: 'Нет администраторов',
   ungroupedUsers: 'Пользователи без группы',
-  ungroupedUsersDesc: 'Удалены из группы. Только супер-admin может назначить дополнительную группу.',
+  ungroupedUsersDesc:
+      'Удалены из группы. Только супер-admin может назначить дополнительную группу.',
   maxValuesTitle: 'Максимальные значения',
   maxValuesHint: 'На основе этих значений рассчитываются проценты',
   periodHasReports: 'В этом периоде есть отчёты. Сначала удалите отчёты.',
@@ -964,7 +979,8 @@ const _ru = AppStrings(
   pinWrong: 'Неверный PIN-код',
   pinMismatch: 'PIN-коды не совпадают',
   customCatsTitle: 'Показатели',
-  customCatsHint: 'Добавьте специальные показатели для группы. Они появятся в отчёте.',
+  customCatsHint:
+      'Добавьте специальные показатели для группы. Они появятся в отчёте.',
   customCatAdd: 'Добавить показатель',
   customCatNewTitle: 'Новый показатель',
   customCatIconLabel: 'Иконка:',
@@ -977,11 +993,14 @@ const _ru = AppStrings(
       'Количество для начисления балла (необязательно)',
   customCatPointsValueLabel: 'Балл за количество',
   customCatEmptyTitle: 'Показатели ещё не настроены',
-  customCatEmptyHint: 'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
+  customCatEmptyHint:
+      'Когда администратор добавит показатели для этой группы, они автоматически появятся в отчёте.',
   metricCannotDeleteTitle: 'Удаление недоступно',
-  metricCannotDeleteMsg: 'Нельзя удалить параметр, который уже использовался в отчётах.',
+  metricCannotDeleteMsg:
+      'Нельзя удалить параметр, который уже использовался в отчётах.',
   metricDeleteTitle: 'Удалить параметр?',
-  adminPersonalMetricsHint: 'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
+  adminPersonalMetricsHint:
+      'Добавьте личные показатели — они будут видны только вам в отчёте «Мои периоды».',
   registrationTitle: 'Регистрация',
   nicknameLabel: 'Никнейм',
   nicknameHint: '2–32 символа',
@@ -1008,8 +1027,7 @@ extension AppStringsX on AppStrings {
   String get authLoginLabel => languageCode == 'ru' ? 'Логин' : 'Логин';
   String get authLoginHint =>
       languageCode == 'ru' ? 'например: nur_01' : 'мысалы: nur_01';
-  String get authPasswordLabel =>
-      languageCode == 'ru' ? 'Пароль' : 'Құпиясөз';
+  String get authPasswordLabel => languageCode == 'ru' ? 'Пароль' : 'Құпиясөз';
   String get authPasswordHint =>
       languageCode == 'ru' ? 'минимум 6 символов' : 'кемінде 6 таңба';
   String get authSignIn => languageCode == 'ru' ? 'Войти' : 'Кіру';
@@ -1037,41 +1055,67 @@ extension AppStringsX on AppStrings {
   String categoryLabel(String key) {
     if (languageCode == 'ru') {
       switch (key) {
-        case 'quran_pages': return 'Коран';
-        case 'book_pages': return 'Книга';
-        case 'fasting_days': return 'Пост';
-        case 'jawshan_count': return 'Джевшен';
-        case 'istighfar_count': return 'Истигфар';
-        case 'tahajjud_count': return 'Тахаджуд';
-        case 'zikir_count': return 'Зикир';
-        case 'salawat_count': return 'Салауат';
-        case 'risale_pages': return 'Рисале';
-        case 'audio_minutes': return 'Аудио';
+        case 'quran_pages':
+          return 'Коран';
+        case 'book_pages':
+          return 'Книга';
+        case 'fasting_days':
+          return 'Пост';
+        case 'jawshan_count':
+          return 'Джевшен';
+        case 'istighfar_count':
+          return 'Истигфар';
+        case 'tahajjud_count':
+          return 'Тахаджуд';
+        case 'zikir_count':
+          return 'Зикир';
+        case 'salawat_count':
+          return 'Салауат';
+        case 'risale_pages':
+          return 'Рисале';
+        case 'audio_minutes':
+          return 'Аудио';
       }
     }
     switch (key) {
-      case 'quran_pages': return 'Құран';
-      case 'book_pages': return 'Кітап';
-      case 'jawshan_count': return 'Жевшен';
-      case 'fasting_days': return 'Ораза';
-      case 'risale_pages': return 'Рисале';
-      case 'audio_minutes': return 'Аудио';
-      case 'salawat_count': return 'Салауат';
-      case 'istighfar_count': return 'Істіғфар';
-      case 'tahajjud_count': return 'Таһажуд';
-      case 'zikir_count': return 'Зікір';
-      default: return key;
+      case 'quran_pages':
+        return 'Құран';
+      case 'book_pages':
+        return 'Кітап';
+      case 'jawshan_count':
+        return 'Жевшен';
+      case 'fasting_days':
+        return 'Ораза';
+      case 'risale_pages':
+        return 'Рисале';
+      case 'audio_minutes':
+        return 'Аудио';
+      case 'salawat_count':
+        return 'Салауат';
+      case 'istighfar_count':
+        return 'Істіғфар';
+      case 'tahajjud_count':
+        return 'Таһажуд';
+      case 'zikir_count':
+        return 'Зікір';
+      default:
+        return key;
     }
   }
 
   String unitLabel(String kkUnit) {
     if (languageCode == 'ru') {
       switch (kkUnit) {
-        case 'бет': return 'стр.';
-        case 'рет': return 'раз';
-        case 'күн': return 'дн.';
-        case 'мін': return 'мин.';
-        case 'сағ': return 'час';
+        case 'бет':
+          return 'стр.';
+        case 'рет':
+          return 'раз';
+        case 'күн':
+          return 'дн.';
+        case 'мін':
+          return 'мин.';
+        case 'сағ':
+          return 'час';
       }
     }
     return kkUnit;

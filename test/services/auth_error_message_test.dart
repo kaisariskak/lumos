@@ -57,6 +57,7 @@ AppStrings _strings(String languageCode) {
     retry: '',
     appSubtitle: '',
     signInGoogle: '',
+    signInApple: '',
     signingIn: '',
     noPassword: '',
     notRegistered: '',
