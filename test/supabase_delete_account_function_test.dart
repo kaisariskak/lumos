@@ -60,6 +60,14 @@ void main() {
     expect(sql, contains('delete from ibadat_member_settings'));
     expect(sql, contains('delete from ibadat_payments'));
     expect(sql, contains('is_personal = true'));
+    expect(sql, contains('update ibadat_periods as period'));
+    expect(sql, contains('set created_by = groups.admin_id'));
+    expect(sql, contains('period.group_id = groups.id'));
+    expect(sql, contains('update ibadat_profiles as profile'));
+    expect(sql, contains('set created_by_admin_id = groups.admin_id'));
+    expect(sql, contains('set created_by_admin_id = null'));
+    expect(sql, contains('update ibadat_payments'));
+    expect(sql, contains('set created_by = null'));
     expect(sql, contains('delete from group_metrics'));
     expect(sql, contains('where admin_id = p_user_id'));
     expect(sql, contains('update ibadat_invite_codes'));
@@ -70,6 +78,10 @@ void main() {
     expect(
       sql.indexOf('delete from report_metric_values'),
       lessThan(sql.indexOf('delete from ibadat_reports')),
+    );
+    expect(
+      sql.indexOf('update ibadat_periods as period'),
+      lessThan(sql.indexOf('delete from ibadat_profiles')),
     );
   });
 }

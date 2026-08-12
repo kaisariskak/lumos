@@ -41,20 +41,28 @@ class IbadatGroupRepository {
   }
 
   Future<IbadatGroup?> getGroupById(String id) async {
-    return traceAsync('IbadatGroupRepository.getGroupById', () async {
-      final data = await _client
-          .from('ibadat_groups')
-          .select()
-          .eq('id', id)
-          .maybeSingle();
-      if (data == null) return null;
-      return IbadatGroup.fromJson(data);
-    }, describeResult: (group) => 'found=${group != null}');
+    return traceAsync(
+      'IbadatGroupRepository.getGroupById',
+      () async {
+        final data = await _client
+            .from('ibadat_groups')
+            .select()
+            .eq('id', id)
+            .maybeSingle();
+        if (data == null) return null;
+        return IbadatGroup.fromJson(data);
+      },
+      describeResult: (group) => 'found=${group != null}',
+    );
   }
 
   Future<IbadatGroup> createGroup(String name, String adminId) async {
-    final prefix = name.trim().substring(0, name.trim().length.clamp(0, 3)).toUpperCase();
-    final code = '$prefix${1000 + (DateTime.now().millisecondsSinceEpoch % 9000)}';
+    final prefix = name
+        .trim()
+        .substring(0, name.trim().length.clamp(0, 3))
+        .toUpperCase();
+    final code =
+        '$prefix${1000 + (DateTime.now().millisecondsSinceEpoch % 9000)}';
     final data = await _client
         .from('ibadat_groups')
         .insert({'name': name.trim(), 'code': code, 'admin_id': adminId})
@@ -64,10 +72,17 @@ class IbadatGroupRepository {
   }
 
   Future<void> updateAdminId(String groupId, String newAdminId) async {
-    await _client
+    final data = await _client
         .from('ibadat_groups')
         .update({'admin_id': newAdminId})
-        .eq('id', groupId);
+        .eq('id', groupId)
+        .select('id');
+    if ((data as List).isEmpty) {
+      throw StateError(
+        'updateAdminId: no row updated for group $groupId '
+        '(RLS rejected UPDATE or the group was deleted).',
+      );
+    }
   }
 
   Future<void> updateFinancier(String groupId, String? financierId) async {
@@ -81,7 +96,6 @@ class IbadatGroupRepository {
     }
   }
 
-
   Future<void> deleteGroup(String groupId) async {
     // Delete all FK-dependent records first
     await _client.from('ibadat_reports').delete().eq('group_id', groupId);
@@ -89,7 +103,10 @@ class IbadatGroupRepository {
     await _client.from('ibadat_groups').delete().eq('id', groupId);
   }
 
-  Future<List<IbadatProfile>> getGroupMembers(String groupId, {String? adminId}) async {
+  Future<List<IbadatProfile>> getGroupMembers(
+    String groupId, {
+    String? adminId,
+  }) async {
     final trace = Stopwatch()..start();
     if (perfLogsEnabled) {
       debugPrint(

@@ -19,6 +19,7 @@ import '../../repositories/invite_code_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../reporting/report_progress.dart';
 import '../../services/account_deletion_service.dart';
+import '../../services/group_admin_transfer_service.dart';
 import '../../services/pin_service.dart';
 import '../../widgets/account_section.dart';
 import '../pin/pin_screen.dart';
@@ -479,26 +480,6 @@ class _AdminScreenState extends State<AdminScreen> {
     if (confirmed == true) {
       try {
         final demotedProfileIds = <String>{};
-        if (!isGroupAdmin) {
-          final previousAdminIds = <String>{group.adminId};
-          for (final m in _groupMembers[group.id] ?? _members) {
-            if (m.id != member.id && group.adminId == m.id) {
-              previousAdminIds.add(m.id);
-            }
-          }
-          for (final adminId in previousAdminIds.where(
-            (id) => id != member.id,
-          )) {
-            final keepAdminRole = await _hasOtherAdminGroups(
-              adminId,
-              excludingGroupId: group.id,
-            );
-            if (!keepAdminRole) {
-              await _profileRepo.updateRole(adminId, 'user');
-              demotedProfileIds.add(adminId);
-            }
-          }
-        }
         String? memberRoleOverride;
         if (isGroupAdmin) {
           final keepAdminRole = await _hasOtherAdminGroups(
@@ -509,12 +490,26 @@ class _AdminScreenState extends State<AdminScreen> {
             memberRoleOverride = 'user';
             await _profileRepo.updateRole(member.id, 'user');
           }
-        } else if (member.role != 'admin') {
-          memberRoleOverride = 'admin';
-          await _profileRepo.updateRole(member.id, 'admin');
-        }
-        if (!isGroupAdmin) {
-          await _groupRepo.updateAdminId(group.id, member.id);
+        } else {
+          final transfer = await transferGroupAdmin(
+            groupId: group.id,
+            previousAdminId: group.adminId,
+            newAdminId: member.id,
+            newAdminAlreadyHasRole: member.isAdmin,
+            promoteNewAdmin: () => _profileRepo.updateRole(member.id, 'admin'),
+            transferOwnership: () =>
+                _groupRepo.updateAdminId(group.id, member.id),
+            previousAdminHasOtherGroups: () =>
+                _hasOtherAdminGroups(group.adminId, excludingGroupId: group.id),
+            demotePreviousAdmin: () =>
+                _profileRepo.updateRole(group.adminId, 'user'),
+          );
+          if (transfer.newAdminWasPromoted) {
+            memberRoleOverride = 'admin';
+          }
+          if (transfer.previousAdminWasDemoted) {
+            demotedProfileIds.add(group.adminId);
+          }
         }
         if (!mounted) return;
         setState(() {

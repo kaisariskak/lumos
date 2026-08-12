@@ -47,9 +47,22 @@ BEGIN
   DELETE FROM ibadat_payments
   WHERE profile_id = p_user_id;
 
+  UPDATE ibadat_payments
+  SET created_by = NULL
+  WHERE created_by = p_user_id;
+
   DELETE FROM ibadat_periods
   WHERE created_by = p_user_id
     AND is_personal = true;
+
+  -- Group periods are shared data. Keep them and transfer their creator
+  -- reference to the group's current administrator.
+  UPDATE ibadat_periods AS period
+  SET created_by = groups.admin_id
+  FROM ibadat_groups AS groups
+  WHERE period.created_by = p_user_id
+    AND period.is_personal = false
+    AND period.group_id = groups.id;
 
   DELETE FROM group_metrics
   WHERE admin_id = p_user_id;
@@ -61,6 +74,18 @@ BEGIN
   UPDATE ibadat_groups
   SET financier_id = NULL
   WHERE financier_id = p_user_id;
+
+  -- Preserve admin scoping for members of transferred groups. Ungrouped
+  -- profiles have no unambiguous successor and must simply release the FK.
+  UPDATE ibadat_profiles AS profile
+  SET created_by_admin_id = groups.admin_id
+  FROM ibadat_groups AS groups
+  WHERE profile.created_by_admin_id = p_user_id
+    AND profile.current_group_id = groups.id;
+
+  UPDATE ibadat_profiles
+  SET created_by_admin_id = NULL
+  WHERE created_by_admin_id = p_user_id;
 
   DELETE FROM ibadat_profiles
   WHERE id = p_user_id;
