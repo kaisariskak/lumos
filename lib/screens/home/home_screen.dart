@@ -175,6 +175,10 @@ class HomeScreenState extends State<HomeScreen> {
 
       if (mounted && _loadVersion == version) {
         setState(() {
+          // On first load select the latest period; on reload keep selection.
+          if (_adminPeriods.isEmpty) {
+            _adminPeriodIdx = adminPeriods.isEmpty ? 0 : adminPeriods.length - 1;
+          }
           _sections = sections;
           _adminPersonalMetrics = personalMetrics;
           _adminPeriods = adminPeriods;
@@ -203,6 +207,9 @@ class HomeScreenState extends State<HomeScreen> {
         section.metrics = results[1] as List<GroupMetric>;
         final periodsRaw = results[2] as List<IbadatPeriod>;
         section.periods = periodsRaw.reversed.toList(); // oldest first
+        // Select the latest period by default.
+        section.periodIdx =
+            section.periods.isEmpty ? 0 : section.periods.length - 1;
 
         return section;
       },
@@ -235,7 +242,11 @@ class HomeScreenState extends State<HomeScreen> {
     if (section.isPeriodMode) {
       final periodIdx = section.periodIdx.clamp(0, section.periods.length - 1);
       final currentPeriod = section.periods[periodIdx];
-      final trendPeriods = section.periods.take(4).toList();
+      // Trend window: up to 4 periods ending at the selected one.
+      final trendPeriods = section.periods.sublist(
+        (periodIdx - 3).clamp(0, periodIdx),
+        periodIdx + 1,
+      );
 
       // Current period may already be in the trend window — fetch each unique
       // period once, then reuse the result for both current + trend slots.
@@ -379,10 +390,16 @@ class HomeScreenState extends State<HomeScreen> {
       final isPeriodMode = periods.isNotEmpty;
       int viewMonth = _viewMonth;
       int viewYear = _viewYear;
+      // On first load select the latest period (periods are oldest first);
+      // on reload keep the user's current selection.
+      int periodIdx = _userPeriods.isEmpty
+          ? periods.length - 1
+          : _userPeriodIdx.clamp(0, periods.length - 1);
       if (isPeriodMode) {
-        final idx = _userPeriodIdx.clamp(0, periods.length - 1);
-        viewMonth = periods[idx].startDate.month;
-        viewYear = periods[idx].startDate.year;
+        viewMonth = periods[periodIdx].startDate.month;
+        viewYear = periods[periodIdx].startDate.year;
+      } else {
+        periodIdx = 0;
       }
 
       if (mounted && _loadVersion == loadVersion) {
@@ -390,6 +407,7 @@ class HomeScreenState extends State<HomeScreen> {
           _userMembers = members;
           _userMetrics = metrics;
           _userPeriods = periods;
+          _userPeriodIdx = periodIdx;
           _viewMonth = viewMonth;
           _viewYear = viewYear;
         });
@@ -397,7 +415,7 @@ class HomeScreenState extends State<HomeScreen> {
           _loadUserReports(
             loadVersion,
             periods,
-            _userPeriodIdx,
+            periodIdx,
             viewMonth,
             viewYear,
           ),
@@ -421,7 +439,11 @@ class HomeScreenState extends State<HomeScreen> {
       if (isPeriodMode) {
         final clampedIdx = periodIdx.clamp(0, periods.length - 1);
         final currentPeriod = periods[clampedIdx];
-        final trendPeriods = periods.take(4).toList();
+        // Trend window: up to 4 periods ending at the selected one.
+        final trendPeriods = periods.sublist(
+          (clampedIdx - 3).clamp(0, clampedIdx),
+          clampedIdx + 1,
+        );
 
         final uniquePeriodsById = <String, IbadatPeriod>{};
         for (final p in trendPeriods) {
@@ -804,15 +826,15 @@ class HomeScreenState extends State<HomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
-                          onPressed: pidx < periods.length - 1
+                          onPressed: pidx > 0
                               ? () async {
-                                  setState(() => _adminPeriodIdx = pidx + 1);
+                                  setState(() => _adminPeriodIdx = pidx - 1);
                                   await _reloadAdminReport();
                                 }
                               : null,
                           icon: Icon(
                             Icons.chevron_left,
-                            color: pidx < periods.length - 1
+                            color: pidx > 0
                                 ? accent.accentLight
                                 : const Color(0xFF334155),
                           ),
@@ -831,15 +853,15 @@ class HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         IconButton(
-                          onPressed: pidx > 0
+                          onPressed: pidx < periods.length - 1
                               ? () async {
-                                  setState(() => _adminPeriodIdx = pidx - 1);
+                                  setState(() => _adminPeriodIdx = pidx + 1);
                                   await _reloadAdminReport();
                                 }
                               : null,
                           icon: Icon(
                             Icons.chevron_right,
-                            color: pidx > 0
+                            color: pidx < periods.length - 1
                                 ? accent.accentLight
                                 : const Color(0xFF334155),
                           ),
