@@ -1045,6 +1045,13 @@ extension AppStringsX on AppStrings {
       ? 'Регистрация создана, но вход не открыт. Отключите обязательное email-подтверждение в Supabase или добавьте серверную регистрацию.'
       : 'Тіркелу жасалды, бірақ кіру ашылмады. Supabase email растауын өшіріңіз немесе серверлік тіркеуді қосыңыз.';
 
+  String get reportAddLabel => languageCode == 'ru' ? 'Добавить' : 'Қосу';
+  String get reportNoChanges =>
+      languageCode == 'ru' ? 'Нет новых данных' : 'Жаңа деректер жоқ';
+  String reportResultPreview(int total, String unit) => languageCode == 'ru'
+      ? 'станет: $total $unit'
+      : 'болады: $total $unit';
+
   String manualValueHint(int max, String unit) {
     if (languageCode == 'ru') {
       return 'Обычный диапазон: 0..$max $unit';
