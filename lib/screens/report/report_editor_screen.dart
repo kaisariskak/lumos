@@ -7,6 +7,7 @@ import '../../models/ibadat_group.dart';
 import '../../models/ibadat_period.dart';
 import '../../models/ibadat_profile.dart';
 import '../../models/ibadat_report.dart';
+import '../../reporting/report_deltas.dart';
 import '../../reporting/report_progress.dart';
 import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
@@ -175,6 +176,10 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
   late IbadatReport _report;
   List<IbadatPeriod> _periods = [];
   IbadatPeriod? _selectedPeriod;
+
+  /// Unsaved per-metric amounts to add to the saved period totals in [_report].
+  final Map<String, int> _deltas = {};
+
   List<GroupMetric> _groupMetrics = [];
   bool _isLoading = true;
   bool _isSaving = false;
@@ -253,6 +258,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
       if (!mounted) return;
 
       setState(() {
+        if (newSelected?.id != _selectedPeriod?.id) _deltas.clear();
         _periods = periods;
         _selectedPeriod = newSelected;
         _groupMetrics = metrics;
@@ -330,6 +336,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
       if (!mounted) return;
       setState(() {
         _selectedPeriod = period;
+        _deltas.clear();
         _report = existing ?? IbadatReport(
           userId: widget.profile.id,
           groupId: period.groupId,
@@ -344,18 +351,56 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
     }
   }
 
+  void _setDelta(String metricId, int delta) {
+    setState(() {
+      if (delta == 0) {
+        _deltas.remove(metricId);
+      } else {
+        _deltas[metricId] = delta;
+      }
+    });
+  }
+
   Future<void> _save() async {
-    if (_selectedPeriod == null) {
+    final period = _selectedPeriod;
+    if (period == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(S.of(context).noPeriodSelected)),
       );
       return;
     }
+    if (_deltas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(S.of(context).reportNoChanges)),
+      );
+      return;
+    }
     setState(() => _isSaving = true);
     try {
-      await _repo.upsertReport(_report);
-      widget.onSaved?.call();
+      // Re-read the period's saved totals so the addition is applied to the
+      // latest data, not to what was loaded when the screen opened.
+      final fresh = await _repo.getReportByPeriod(
+        userId: widget.profile.id,
+        groupId: period.groupId,
+        periodId: period.id,
+      );
+      final base = fresh ??
+          IbadatReport(
+            userId: widget.profile.id,
+            groupId: period.groupId,
+            periodId: period.id,
+            month: period.startDate.month,
+            year: period.startDate.year,
+          );
+      final saved = await _repo.upsertReport(
+        base.copyWith(metricValues: applyReportDeltas(base.metricValues, _deltas)),
+      );
       if (!mounted) return;
+      setState(() {
+        _report = saved;
+        _deltas.clear();
+      });
+      widget.onSaved?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(S.of(context).reportSaved),
@@ -414,9 +459,12 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
   Widget _buildMetricCard(BuildContext context, GroupMetric metric) {
     final s = S.of(context);
     final metricId = metric.id!;
-    final value = _report.valueForMetric(metricId);
+    final total = _report.valueForMetric(metricId);
+    final delta = _deltas[metricId] ?? 0;
+    final result = total + delta;
+    final unit = s.unitLabel(metric.unit);
     final sliderMax = metric.maxValue > 0 ? metric.maxValue.toDouble() : 1.0;
-    final clampedValue = value.clamp(0, metric.maxValue > 0 ? metric.maxValue : 1).toDouble();
+    final sliderValue = delta.clamp(0, metric.maxValue > 0 ? metric.maxValue : 1).toDouble();
     final quickValues = quickValuesFor(metric);
 
     return Container(
@@ -465,7 +513,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '$value ${s.unitLabel(metric.unit)}',
+                      '$total $unit',
                       style: TextStyle(
                         color: metric.color,
                         fontWeight: FontWeight.w700,
@@ -473,7 +521,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                       ),
                     ),
                   ),
-                  if (value > metric.maxValue) ...[
+                  if (result > metric.maxValue) ...[
                     const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -485,7 +533,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                         ),
                       ),
                       child: Text(
-                        '+${value - metric.maxValue}',
+                        '+${result - metric.maxValue}',
                         style: const TextStyle(
                           color: Color(0xFFFCD34D),
                           fontSize: 11,
@@ -498,7 +546,29 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
               ),
             ],
           ),
+          if (delta != 0)
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  s.reportResultPreview(result < 0 ? 0 : result, unit),
+                  style: TextStyle(
+                    color: metric.color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              s.reportAddLabel,
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            ),
+          ),
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: metric.color,
@@ -511,10 +581,8 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
             child: Slider(
               min: 0,
               max: sliderMax,
-              value: clampedValue,
-              onChanged: (newValue) {
-                setState(() => _report.setValue(metricId, newValue.round()));
-              },
+              value: sliderValue,
+              onChanged: (newValue) => _setDelta(metricId, newValue.round()),
             ),
           ),
           Padding(
@@ -525,16 +593,16 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                 _CounterBtn(
                   icon: Icons.remove,
                   color: metric.color,
-                  onTap: value > 0
-                      ? () => setState(() => _report.setValue(metricId, value - 1))
+                  onTap: delta > -total
+                      ? () => _setDelta(metricId, delta - 1)
                       : null,
                 ),
                 GestureDetector(
                   onTap: () async {
-                    final result = await showDialog<int>(
+                    final entered = await showDialog<int>(
                       context: context,
                       builder: (_) => ManualValueDialog(
-                        current: value,
+                        current: delta < 0 ? 0 : delta,
                         unitLabel: s.unitLabel(metric.unit),
                         color: metric.color,
                         title: s.manualValueTitle,
@@ -543,8 +611,8 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                         cancelLabel: s.cancel,
                       ),
                     );
-                    if (result != null && mounted) {
-                      setState(() => _report.setValue(metricId, result));
+                    if (entered != null && mounted) {
+                      _setDelta(metricId, entered);
                     }
                   },
                   child: Container(
@@ -555,7 +623,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '$value',
+                      delta < 0 ? '−${-delta}' : '$delta',
                       style: TextStyle(
                         color: metric.color,
                         fontWeight: FontWeight.w800,
@@ -567,19 +635,19 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                 _CounterBtn(
                   icon: Icons.add,
                   color: metric.color,
-                  onTap: () => setState(() => _report.setValue(metricId, value + 1)),
+                  onTap: () => _setDelta(metricId, delta + 1),
                 ),
               ],
             ),
           ),
           Row(
             children: quickValues.map((quickValue) {
-              final isSelected = value == quickValue;
+              final isSelected = delta == quickValue;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: GestureDetector(
-                    onTap: () => setState(() => _report.setValue(metricId, quickValue)),
+                    onTap: () => _setDelta(metricId, quickValue),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.symmetric(vertical: 6),
