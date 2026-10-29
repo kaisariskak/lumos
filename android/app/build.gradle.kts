@@ -33,8 +33,8 @@ android {
         applicationId = "kz.kaizer.lumos"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.0.7"
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
     
 
