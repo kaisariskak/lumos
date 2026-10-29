@@ -32,6 +32,20 @@ class IbadatPeriod {
     );
   }
 
+  /// Full inverse of [IbadatPeriod.fromJson], used for the local cache.
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      'group_id': groupId,
+      'label': label,
+      'start_date': startDate.toIso8601String(),
+      'end_date': endDate.toIso8601String(),
+      'created_by': createdBy,
+      'created_at': createdAt.toIso8601String(),
+      'is_personal': isPersonal,
+    };
+  }
+
   String get dateRangeLabel => dateRangeLabelLocalized('kk');
 
   String dateRangeLabelLocalized(String lang) {

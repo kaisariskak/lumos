@@ -17,14 +17,15 @@ void main() {
     },
   );
 
-  test('clearLocalAccountState clears pin', () async {
+  test('clearLocalAccountState clears pin and startup cache', () async {
     final calls = <String>[];
 
     await AuthLogoutService.clearLocalAccountState(
       clearPin: () async => calls.add('clearPin'),
+      clearStartupCache: () async => calls.add('clearStartupCache'),
     );
 
-    expect(calls, ['clearPin']);
+    expect(calls, ['clearPin', 'clearStartupCache']);
   });
 
   test('finishDeletedAccountSession ignores provider failures', () async {

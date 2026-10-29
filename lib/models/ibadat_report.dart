@@ -49,6 +49,21 @@ class IbadatReport {
     };
   }
 
+  /// Full inverse of [IbadatReport.fromJson], used for the local cache.
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'group_id': groupId,
+      'period_id': periodId,
+      'month': month,
+      'year': year,
+      'metric_values': metricValues,
+      'submitted_at': submittedAt?.toIso8601String(),
+      'updated_at': updatedAt?.toIso8601String(),
+    };
+  }
+
   IbadatReport copyWith({
     String? id,
     String? userId,

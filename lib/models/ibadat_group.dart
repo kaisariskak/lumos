@@ -40,6 +40,18 @@ class IbadatGroup {
     };
   }
 
+  /// Full inverse of [IbadatGroup.fromJson], used for the local cache.
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      'name': name,
+      'code': code,
+      'admin_id': adminId,
+      'financier_id': financierId,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
+
   IbadatGroup copyWith({
     String? name,
     String? adminId,

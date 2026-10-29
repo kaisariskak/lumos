@@ -87,6 +87,14 @@ class GroupMetric {
     };
   }
 
+  /// Full inverse of [GroupMetric.fromJson], used for the local cache.
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      ...toJson(),
+    };
+  }
+
   factory GroupMetric.test({
     String? id,
     String? groupId = 'group-1',

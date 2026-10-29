@@ -46,6 +46,20 @@ class IbadatProfile {
     };
   }
 
+  /// Full inverse of [IbadatProfile.fromJson], used for the local cache.
+  Map<String, dynamic> toCacheJson() {
+    return {
+      'id': id,
+      'nickname': nickname,
+      'role': role,
+      'current_group_id': currentGroupId,
+      'super_admin_id': superAdminId,
+      'created_by_admin_id': createdByAdminId,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+    };
+  }
+
   IbadatProfile copyWith({
     String? nickname,
     String? role,

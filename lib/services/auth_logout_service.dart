@@ -1,6 +1,7 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../cache/startup_cache.dart';
 import 'pin_service.dart';
 
 typedef AsyncLogoutStep = Future<void> Function();
@@ -32,8 +33,10 @@ class AuthLogoutService {
 
   static Future<void> clearLocalAccountState({
     AsyncLogoutStep? clearPin,
+    AsyncLogoutStep? clearStartupCache,
   }) async {
     await (clearPin ?? PinService.clearPin)();
+    await (clearStartupCache ?? StartupCache.clear)();
   }
 
   static Future<void> _ignoreFailure(AsyncLogoutStep step) async {
