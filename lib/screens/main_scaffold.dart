@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../cache/startup_cache.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_group.dart';
 import '../theme/accent_provider.dart';
@@ -14,6 +17,8 @@ import 'profile/profile_screen.dart';
 import 'report/report_editor_screen.dart';
 import 'super_admin/super_admin_codes_screen.dart';
 import '../utils/perf_log.dart';
+
+const _groupCacheName = 'group';
 
 class MainScaffold extends StatefulWidget {
   final IbadatProfile profile;
@@ -78,25 +83,53 @@ class _MainScaffoldState extends State<MainScaffold>
         });
         return;
       }
+      final groupId = widget.profile.currentGroupId!;
+      final userId = widget.profile.id;
+      if (_group?.id != groupId) {
+        final cached = _groupFromCache(
+          await StartupCache.read(userId, _groupCacheName),
+          groupId,
+        );
+        if (cached != null && mounted && _group?.id != groupId) {
+          _applyGroup(cached);
+        }
+      }
       try {
         final repo = IbadatGroupRepository(Supabase.instance.client);
-        final group = await repo.getGroupById(widget.profile.currentGroupId!);
+        final group = await repo.getGroupById(groupId);
         if (!mounted) return;
-        final isFinancier =
-            group != null && group.financierId == widget.profile.id;
-        final isAdmin = _isEffectiveAdmin(group);
-        final showPayments = group != null && (isFinancier || isAdmin);
-        final tabCount = 2 + (showPayments ? 1 : 0) + 1;
-        setState(() {
-          _group = group;
-          _isLoading = false;
-          if (_tabIndex >= tabCount) {
-            _tabIndex = tabCount - 1;
-            _builtTabs.add(_tabIndex);
-          }
-        });
+        if (group != null) {
+          unawaited(
+            StartupCache.write(userId, _groupCacheName, group.toCacheJson()),
+          );
+        }
+        _applyGroup(group);
       } catch (_) {
         if (mounted) setState(() => _isLoading = false);
+      }
+    });
+  }
+
+  static IbadatGroup? _groupFromCache(Object? json, String groupId) {
+    try {
+      final group = IbadatGroup.fromJson(Map<String, dynamic>.from(json as Map));
+      return group.id == groupId ? group : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _applyGroup(IbadatGroup? group) {
+    final isFinancier = group != null && group.financierId == widget.profile.id;
+    final isAdmin = _isEffectiveAdmin(group);
+    final showPayments = group != null && (isFinancier || isAdmin);
+    final tabCount = 2 + (showPayments ? 1 : 0) + 1;
+    setState(() {
+      _group = group;
+      _isLoading = false;
+      if (_tabIndex >= tabCount) {
+        _tabIndex = tabCount - 1;
+        _builtTabs.add(_tabIndex);
       }
     });
   }
