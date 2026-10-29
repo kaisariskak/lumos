@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_profile_wait.dart';
+import '../cache/startup_cache.dart';
 import '../l10n/app_strings.dart';
 import '../models/ibadat_profile.dart';
 import '../models/invite_code.dart';
@@ -35,6 +36,8 @@ class _AuthGateState extends State<AuthGate> {
   bool _pinRequired = false;
   bool _waitingForUsernameProfile = false;
   bool _usernameRegistrationInProgress = false;
+  bool _hasPin = false;
+  bool _pinVerified = false;
 
   IbadatProfile? _profile;
 
@@ -51,6 +54,7 @@ class _AuthGateState extends State<AuthGate> {
         setState(() => _checkingBiometric = false);
         _loadProfile();
       } else if (data.event == AuthChangeEvent.signedOut) {
+        _pinVerified = false;
         setState(() {
           _checkingBiometric = false;
           _pinRequired = false;
@@ -70,101 +74,149 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _checkAuth() async {
     await traceAsync('AuthGate._checkAuth', () async {
+      final user = Supabase.instance.client.auth.currentUser;
       final session = Supabase.instance.client.auth.currentSession;
-      if (session == null) {
+      if (session == null || user == null) {
         setState(() => _checkingBiometric = false);
         return;
       }
 
-      final hasPin = await traceAsync('PinService.hasPin', PinService.hasPin);
-      if (hasPin) {
-        final profile = await _loadProfileForPinBypass();
-        if (profile != null && await _shouldBypassPin(profile)) {
-          if (!mounted) return;
-          setState(() {
-            _pinRequired = false;
-            _checkingBiometric = false;
-          });
-          await _loadProfile();
-          return;
-        }
+      _hasPin = await traceAsync('PinService.hasPin', PinService.hasPin);
 
+      // Last-known profile: route immediately, then refresh in the background.
+      final cached = _AuthData.tryFromJson(
+        await StartupCache.read(user.id, _authCacheName),
+      );
+      final cachedProfile = cached?.profile;
+      if (cached != null && cachedProfile != null) {
         if (!mounted) return;
+        final pinNeeded =
+            _hasPin && !_bypassesPin(cachedProfile, cached.ownsGroup);
         setState(() {
-          _pinRequired = true;
+          _pinRequired = pinNeeded;
           _checkingBiometric = false;
         });
+        if (!pinNeeded) {
+          _applyProfile(_normalizeAdminProfile(cachedProfile, cached.ownsGroup));
+          unawaited(_loadProfile(background: true));
+        }
         return;
       }
 
-      setState(() => _checkingBiometric = false);
-      await _loadProfile();
+      if (!_hasPin) {
+        setState(() => _checkingBiometric = false);
+        await _loadProfile();
+        return;
+      }
+
+      _AuthData? data;
+      try {
+        data = await _fetchAuth(user.id);
+      } catch (e) {
+        debugPrint('PIN bypass check failed: $e');
+      }
+      final profile = data?.profile;
+      if (!mounted) return;
+      if (data != null &&
+          profile != null &&
+          _bypassesPin(profile, data.ownsGroup)) {
+        setState(() {
+          _pinRequired = false;
+          _checkingBiometric = false;
+        });
+        await _loadProfile(prefetched: data);
+        return;
+      }
+
+      setState(() {
+        _pinRequired = true;
+        _checkingBiometric = false;
+      });
     });
   }
 
-  Future<IbadatProfile?> _loadProfileForPinBypass() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return null;
-    try {
-      return traceAsync(
-        'AuthGate._loadProfileForPinBypass',
-        () => ProfileRepository(Supabase.instance.client).getProfile(user.id),
-      );
-    } catch (e) {
-      debugPrint('PIN bypass profile check failed: $e');
-      return null;
-    }
+  /// Profile and group ownership depend only on the user id, so they are
+  /// fetched in parallel.
+  Future<_AuthData> _fetchAuth(String userId) async {
+    final results = await Future.wait<Object?>([
+      ProfileRepository(Supabase.instance.client).getProfile(userId),
+      _ownsAnyGroup(userId),
+    ]);
+    return _AuthData(
+      profile: results[0] as IbadatProfile?,
+      ownsGroup: results[1] as bool,
+    );
   }
 
-  Future<bool> _shouldBypassPin(IbadatProfile profile) async {
-    if (profile.isSuperAdmin) return false;
+  Future<bool> _ownsAnyGroup(String userId) async {
     try {
       final groups = await traceAsync(
-        'AuthGate._shouldBypassPin.groups',
+        'AuthGate._ownsAnyGroup',
         () => IbadatGroupRepository(
           Supabase.instance.client,
-        ).getGroupsByAdminIds([profile.id]),
+        ).getGroupsByAdminIds([userId]),
         describeResult: (groups) => 'groups=${groups.length}',
       );
       return groups.isNotEmpty;
     } catch (e) {
-      debugPrint('PIN bypass group check failed: $e');
+      debugPrint('Admin ownership check failed: $e');
       return false;
     }
   }
 
-  Future<IbadatProfile> _normalizeAdminProfile(IbadatProfile profile) async {
-    if (profile.isAdmin || profile.isSuperAdmin) return profile;
-    try {
-      final groups = await traceAsync(
-        'AuthGate._normalizeAdminProfile.groups',
-        () => IbadatGroupRepository(
-          Supabase.instance.client,
-        ).getGroupsByAdminIds([profile.id]),
-        describeResult: (groups) => 'groups=${groups.length}',
-      );
-      if (groups.isEmpty) return profile;
-      return profile.copyWith(role: 'admin');
-    } catch (e) {
-      debugPrint('Admin ownership check failed: $e');
-      return profile;
-    }
+  static bool _bypassesPin(IbadatProfile profile, bool ownsGroup) =>
+      !profile.isSuperAdmin && ownsGroup;
+
+  static IbadatProfile _normalizeAdminProfile(
+    IbadatProfile profile,
+    bool ownsGroup,
+  ) {
+    if (profile.isAdmin || profile.isSuperAdmin || !ownsGroup) return profile;
+    return profile.copyWith(role: 'admin');
   }
 
   void _onPinSuccess() {
+    _pinVerified = true;
     setState(() => _pinRequired = false);
     _loadProfile();
   }
 
-  Future<void> _loadProfile({int usernameProfileAttempts = 0}) async {
+  void _applyProfile(IbadatProfile profile) {
+    if (!mounted) return;
+    if (profile.currentGroupId == null && profile.role == 'user') {
+      // Existing profile, no group → only need a USER invite code.
+      setState(() {
+        _profile = profile;
+        _waitingForUsernameProfile = false;
+        _showInviteCode = true;
+        _showRegistration = false;
+        _showGroupPicker = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _profile = profile;
+      _waitingForUsernameProfile = false;
+      _showGroupPicker = false;
+      _showInviteCode = false;
+      _showRegistration = false;
+    });
+  }
+
+  Future<void> _loadProfile({
+    int usernameProfileAttempts = 0,
+    _AuthData? prefetched,
+    bool background = false,
+  }) async {
     await traceAsync(
       'AuthGate._loadProfile attempt=$usernameProfileAttempts',
       () async {
         final user = Supabase.instance.client.auth.currentUser;
         if (user == null) return;
         try {
-          final repo = ProfileRepository(Supabase.instance.client);
-          IbadatProfile? profile = await repo.getProfile(user.id);
+          final data = prefetched ?? await _fetchAuth(user.id);
+          final profile = data.profile;
 
       if (profile == null) {
         if (AuthProfileWait.shouldWaitForUsernameProfile(user.userMetadata) &&
@@ -196,32 +248,21 @@ class _AuthGateState extends State<AuthGate> {
         return;
       }
 
-      profile = await _normalizeAdminProfile(profile);
+      unawaited(StartupCache.write(user.id, _authCacheName, data.toJson()));
 
-      if (profile.currentGroupId == null && profile.role == 'user') {
-        // Existing profile, no group → only need a USER invite code.
+      // A cached decision may have skipped the PIN; lock again if fresh data
+      // says the PIN is required and it was not entered in this session.
+      if (_hasPin && !_pinVerified && !_bypassesPin(profile, data.ownsGroup)) {
         if (!mounted) return;
-        setState(() {
-          _profile = profile;
-          _waitingForUsernameProfile = false;
-          _showInviteCode = true;
-          _showRegistration = false;
-          _showGroupPicker = false;
-        });
+        setState(() => _pinRequired = true);
         return;
       }
 
-      if (!mounted) return;
-      setState(() {
-        _profile = profile;
-        _waitingForUsernameProfile = false;
-        _showGroupPicker = false;
-        _showInviteCode = false;
-        _showRegistration = false;
-      });
+      _applyProfile(_normalizeAdminProfile(profile, data.ownsGroup));
         } catch (e) {
           debugPrint('Profile load error: $e');
-          if (!mounted) return;
+          // Keep the cached screen when a background refresh fails.
+          if (!mounted || (background && _profile != null)) return;
           setState(() => _profileError = true);
         }
       },
@@ -422,5 +463,35 @@ class _AuthGateState extends State<AuthGate> {
       onSwitchGroup: () => setState(() => _showGroupPicker = true),
       onReloadProfile: _loadProfile,
     );
+  }
+}
+
+const _authCacheName = 'auth';
+
+/// Profile plus "admins at least one group" — everything routing needs.
+class _AuthData {
+  final IbadatProfile? profile;
+  final bool ownsGroup;
+
+  const _AuthData({required this.profile, required this.ownsGroup});
+
+  Map<String, dynamic> toJson() => {
+        'profile': profile?.toCacheJson(),
+        'owns_group': ownsGroup,
+      };
+
+  static _AuthData? tryFromJson(Object? json) {
+    try {
+      final map = Map<String, dynamic>.from(json as Map);
+      final profileJson = map['profile'];
+      return _AuthData(
+        profile: profileJson == null
+            ? null
+            : IbadatProfile.fromJson(Map<String, dynamic>.from(profileJson as Map)),
+        ownsGroup: map['owns_group'] as bool,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
