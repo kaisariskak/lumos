@@ -272,8 +272,33 @@ class IbadatReportRepository {
     );
   }
 
+  /// Metric values embedded by `select('*, report_metric_values(...)')`,
+  /// or null when the row was fetched without them.
+  static Map<String, int>? _embeddedMetricValues(Map<String, dynamic> data) {
+    final raw = data['report_metric_values'];
+    if (raw is! List) return null;
+    final values = <String, int>{};
+    for (final row in raw) {
+      if (row is! Map) continue;
+      final metricId = row['metric_id']?.toString();
+      final value = row['value'];
+      if (metricId == null || value is! num) continue;
+      values[metricId] = value.toInt();
+    }
+    return values;
+  }
+
+  static IbadatReport _withValues(IbadatReport report, Map<String, int> values) {
+    if (values.isEmpty) return report;
+    return report.copyWith(metricValues: {...report.metricValues, ...values});
+  }
+
   Future<IbadatReport> _hydrateReport(Map<String, dynamic> data) async {
     final report = IbadatReport.fromJson(data);
+    final embedded = _embeddedMetricValues(data);
+    if (embedded != null) {
+      return _withValues(report, embedded);
+    }
     final reportId = report.id;
     if (reportId == null) {
       return report;
@@ -293,30 +318,22 @@ class IbadatReportRepository {
     List<Map<String, dynamic>> data,
   ) async {
     final reports = data.map(IbadatReport.fromJson).toList();
-    final reportIds = reports
-        .map((report) => report.id)
-        .whereType<String>()
-        .toList();
-    if (reportIds.isEmpty) {
-      return reports;
-    }
+    final embedded = data.map(_embeddedMetricValues).toList();
+    final reportIds = [
+      for (var i = 0; i < reports.length; i++)
+        if (embedded[i] == null && reports[i].id != null) reports[i].id!,
+    ];
+    final valuesByReportId = reportIds.isEmpty
+        ? const <String, Map<String, int>>{}
+        : await _store.getMetricValuesForReports(reportIds);
 
-    final valuesByReportId = await _store.getMetricValuesForReports(reportIds);
-    return reports.map((report) {
-      final reportId = report.id;
-      if (reportId == null) {
-        return report;
-      }
-
-      final dynamicValues = valuesByReportId[reportId];
-      if (dynamicValues == null || dynamicValues.isEmpty) {
-        return report;
-      }
-
-      return report.copyWith(
-        metricValues: {...report.metricValues, ...dynamicValues},
-      );
-    }).toList();
+    return [
+      for (var i = 0; i < reports.length; i++)
+        _withValues(
+          reports[i],
+          embedded[i] ?? valuesByReportId[reports[i].id] ?? const {},
+        ),
+    ];
   }
 }
 
@@ -324,6 +341,8 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
   _SupabaseIbadatReportDataStore(this._client);
 
   final SupabaseClient _client;
+
+  static const _reportWithValues = '*, report_metric_values(metric_id, value)';
 
   @override
   Future<Map<String, dynamic>?> getReport({
@@ -335,7 +354,7 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     return traceAsync('IbadatReportStore.getReport', () async {
       var query = _client
           .from('ibadat_reports')
-          .select()
+          .select(_reportWithValues)
           .eq('user_id', userId)
           .eq('month', month)
           .eq('year', year);
@@ -355,7 +374,7 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     return traceAsync('IbadatReportStore.getReportByPeriod', () async {
       var query = _client
           .from('ibadat_reports')
-          .select()
+          .select(_reportWithValues)
           .eq('user_id', userId)
           .eq('period_id', periodId);
       query = groupId == null
@@ -376,7 +395,7 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
       () async {
         final data = await _client
             .from('ibadat_reports')
-            .select()
+            .select(_reportWithValues)
             .eq('group_id', groupId)
             .eq('month', month)
             .eq('year', year);
@@ -396,7 +415,7 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
       () async {
         final data = await _client
             .from('ibadat_reports')
-            .select()
+            .select(_reportWithValues)
             .eq('group_id', groupId)
             .eq('period_id', periodId);
         return _castRows(data);
@@ -469,7 +488,7 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
       () async {
         var query = _client
             .from('ibadat_reports')
-            .select()
+            .select(_reportWithValues)
             .eq('user_id', userId)
             .eq('year', year);
         query = groupId == null

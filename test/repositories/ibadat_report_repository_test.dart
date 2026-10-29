@@ -30,6 +30,71 @@ void main() {
     expect(report!.metricValues, {'metric-1': 9, 'metric-2': 15});
   });
 
+  test('getReport uses embedded metric values without extra lookup', () async {
+    final store = _FakeIbadatReportDataStore(
+      reportResult: {
+        'id': 'report-1',
+        'user_id': 'user-1',
+        'group_id': 'group-1',
+        'month': 4,
+        'year': 2026,
+        'report_metric_values': [
+          {'metric_id': 'metric-1', 'value': 9},
+          {'metric_id': 'metric-2', 'value': 15},
+        ],
+      },
+    );
+    final repository = IbadatReportRepository.withStore(store);
+
+    final report = await repository.getReport(
+      userId: 'user-1',
+      groupId: 'group-1',
+      month: 4,
+      year: 2026,
+    );
+
+    expect(report!.metricValues, {'metric-1': 9, 'metric-2': 15});
+    expect(store.singleMetricValueReads, isEmpty);
+  });
+
+  test('getGroupReports uses embedded values and skips batch lookup', () async {
+    final store = _FakeIbadatReportDataStore(
+      groupReportsResult: [
+        {
+          'id': 'report-1',
+          'user_id': 'user-1',
+          'group_id': 'group-1',
+          'month': 4,
+          'year': 2026,
+          'report_metric_values': [
+            {'metric_id': 'metric-1', 'value': 3},
+          ],
+        },
+        {
+          'id': 'report-2',
+          'user_id': 'user-2',
+          'group_id': 'group-1',
+          'month': 4,
+          'year': 2026,
+          'report_metric_values': <Map<String, dynamic>>[],
+        },
+      ],
+    );
+    final repository = IbadatReportRepository.withStore(store);
+
+    final reports = await repository.getGroupReports(
+      groupId: 'group-1',
+      month: 4,
+      year: 2026,
+    );
+
+    expect(reports.map((r) => r.metricValues), [
+      {'metric-1': 3},
+      <String, int>{},
+    ]);
+    expect(store.batchMetricValueReads, isEmpty);
+  });
+
   test(
     'upsertReport writes header without legacy columns and persists all metric values',
     () async {
