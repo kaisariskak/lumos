@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../cache/home_snapshot.dart';
+import '../../cache/startup_cache.dart';
 import '../../l10n/app_strings.dart';
 import '../../groups/group_member_filter.dart';
 import '../../models/group_metric.dart';
@@ -34,6 +36,25 @@ class _GroupSection {
   bool expanded = false;
 
   _GroupSection({required this.group});
+
+  _GroupSection.fromSnapshot(HomeSectionSnapshot s)
+      : group = s.group!,
+        members = s.members,
+        metrics = s.metrics,
+        periods = s.periods,
+        periodIdx = s.periodIdx,
+        monthlyReports = s.monthlyReports,
+        trendReports = s.trendReports;
+
+  HomeSectionSnapshot toSnapshot() => HomeSectionSnapshot(
+        group: group,
+        members: members,
+        metrics: metrics,
+        periods: periods,
+        periodIdx: periodIdx,
+        monthlyReports: monthlyReports,
+        trendReports: trendReports,
+      );
 
   int get viewMonth => periods.isNotEmpty
       ? periods[periodIdx.clamp(0, periods.length - 1)].startDate.month
@@ -86,6 +107,9 @@ class HomeScreenState extends State<HomeScreen> {
   late final IbadatPeriodRepository _periodRepo;
 
   bool _isLoading = true;
+  // True once data (cached or fresh) is on screen; later loads keep it visible.
+  bool _hasData = false;
+  bool _snapshotTried = false;
 
   // Admin: list of group sections
   List<_GroupSection> _sections = [];
@@ -131,10 +155,71 @@ class HomeScreenState extends State<HomeScreen> {
     _loadData();
   }
 
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Fresh profile/group may replace cached ones that pointed elsewhere.
+    if (oldWidget.group?.id != widget.group?.id ||
+        oldWidget.profile.role != widget.profile.role) {
+      _silentReload();
+    }
+  }
+
+  Future<void> _restoreSnapshot() async {
+    final json = await StartupCache.read(
+      widget.profile.id,
+      homeSnapshotCacheName,
+    );
+    if (!mounted || _hasData) return;
+    if (_isAdmin && !_isSuperAdmin) {
+      final snap = HomeAdminSnapshot.tryFromJson(json);
+      if (snap == null) return;
+      setState(() {
+        _sections = [
+          for (final s in snap.sections)
+            if (s.group != null) _GroupSection.fromSnapshot(s),
+        ];
+        _adminPersonalMetrics = snap.personalMetrics;
+        _adminPeriods = snap.personalPeriods;
+        _adminPeriodIdx = snap.personalPeriodIdx;
+        _adminReport = snap.personalReport;
+        _hasData = true;
+        _isLoading = false;
+      });
+    } else {
+      final snap = HomeUserSnapshot.tryFromJson(json);
+      if (snap == null || snap.groupId != widget.group?.id) return;
+      final data = snap.data;
+      setState(() {
+        _userMembers = data.members;
+        _userMetrics = data.metrics;
+        _userPeriods = data.periods;
+        _userPeriodIdx = data.periodIdx;
+        _viewMonth = snap.viewMonth;
+        _viewYear = snap.viewYear;
+        _userMonthlyReports = data.monthlyReports;
+        _userTrendReports = data.trendReports;
+        _hasData = true;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _writeSnapshot(Map<String, dynamic> json) {
+    unawaited(
+      StartupCache.write(widget.profile.id, homeSnapshotCacheName, json),
+    );
+  }
+
   Future<void> _loadData() async {
     await traceAsync('HomeScreen._loadData', () async {
       final version = ++_loadVersion;
-      setState(() => _isLoading = true);
+      if (!_snapshotTried) {
+        _snapshotTried = true;
+        await _restoreSnapshot();
+      }
+      if (!mounted) return;
+      if (!_hasData) setState(() => _isLoading = true);
       try {
         if (_isAdmin && !_isSuperAdmin) {
           await _loadAdminData(version);
@@ -175,13 +260,14 @@ class HomeScreenState extends State<HomeScreen> {
 
       if (mounted && _loadVersion == version) {
         setState(() {
-          // On first load select the latest period; on reload keep selection.
-          if (_adminPeriods.isEmpty) {
+          // Follow the latest period unless an older one was picked.
+          if (_adminPeriodIdx >= _adminPeriods.length - 1) {
             _adminPeriodIdx = adminPeriods.isEmpty ? 0 : adminPeriods.length - 1;
           }
           _sections = sections;
           _adminPersonalMetrics = personalMetrics;
           _adminPeriods = adminPeriods;
+          _hasData = true;
         });
         unawaited(_loadAdminReports(version, sections, adminPeriods));
       }
@@ -228,6 +314,15 @@ class HomeScreenState extends State<HomeScreen> {
       final adminReport = await _fetchAdminReport(adminPeriods);
       if (!mounted || _loadVersion != version) return;
       setState(() => _adminReport = adminReport);
+      _writeSnapshot(
+        HomeAdminSnapshot(
+          sections: [for (final s in sections) s.toSnapshot()],
+          personalMetrics: _adminPersonalMetrics,
+          personalPeriods: _adminPeriods,
+          personalPeriodIdx: _adminPeriodIdx,
+          personalReport: adminReport,
+        ).toJson(),
+      );
     });
   }
 
@@ -390,9 +485,10 @@ class HomeScreenState extends State<HomeScreen> {
       final isPeriodMode = periods.isNotEmpty;
       int viewMonth = _viewMonth;
       int viewYear = _viewYear;
-      // On first load select the latest period (periods are oldest first);
-      // on reload keep the user's current selection.
-      int periodIdx = _userPeriods.isEmpty
+      // Periods are oldest first. Follow the latest period (also when a new
+      // one was added) unless the user picked an older one.
+      final wasOnLatest = _userPeriodIdx >= _userPeriods.length - 1;
+      int periodIdx = wasOnLatest
           ? periods.length - 1
           : _userPeriodIdx.clamp(0, periods.length - 1);
       if (isPeriodMode) {
@@ -410,6 +506,7 @@ class HomeScreenState extends State<HomeScreen> {
           _userPeriodIdx = periodIdx;
           _viewMonth = viewMonth;
           _viewYear = viewYear;
+          _hasData = true;
         });
         unawaited(
           _loadUserReports(
@@ -501,6 +598,21 @@ class HomeScreenState extends State<HomeScreen> {
         _userMonthlyReports = monthly;
         _userTrendReports = trend;
       });
+      _writeSnapshot(
+        HomeUserSnapshot(
+          groupId: widget.group!.id,
+          viewMonth: viewMonth,
+          viewYear: viewYear,
+          data: HomeSectionSnapshot(
+            members: _userMembers,
+            metrics: _userMetrics,
+            periods: periods,
+            periodIdx: periodIdx,
+            monthlyReports: monthly,
+            trendReports: trend,
+          ),
+        ).toJson(),
+      );
     });
   }
 
