@@ -61,6 +61,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reloadToken != widget.reloadToken ||
         oldWidget.group.id != widget.group.id) {
+      if (oldWidget.group.id != widget.group.id) _isLoading = true;
       _selectedGroup = widget.group;
       _load();
     }
@@ -81,7 +82,8 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     if (perfLogsEnabled) {
       debugPrint('[PERF] START PaymentsScreen._load');
     }
-    setState(() => _isLoading = true);
+    // Already-loaded data stays on screen while it refreshes; the spinner is
+    // shown only on first load and when the group changes.
     try {
       final groups = await _loadVisibleGroups();
       final selectedGroup = groups.firstWhere(
@@ -116,6 +118,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         );
       }
 
+      if (!mounted) return;
       setState(() {
         _groups = groups;
         _selectedGroup = selectedGroup;
@@ -125,7 +128,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         _isLoading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     } finally {
       if (perfLogsEnabled) {
         debugPrint(

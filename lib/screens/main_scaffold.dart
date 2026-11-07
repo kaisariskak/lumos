@@ -43,6 +43,7 @@ class _MainScaffoldState extends State<MainScaffold>
   bool _isLoading = true;
   int _paymentsReloadToken = 0;
   final Set<int> _builtTabs = {0};
+  bool _prefetchTabs = false;
   final _homeKey = GlobalKey<HomeScreenState>();
   final _reportKey = GlobalKey<ReportEditorScreenState>();
 
@@ -132,6 +133,14 @@ class _MainScaffoldState extends State<MainScaffold>
         _builtTabs.add(_tabIndex);
       }
     });
+  }
+
+  /// Builds the remaining tabs offstage once the home tab has finished its
+  /// first load, so their requests don't compete with it and their data is
+  /// already there by the time the user switches to them.
+  void _startPrefetch() {
+    if (_prefetchTabs || !mounted) return;
+    setState(() => _prefetchTabs = true);
   }
 
   Future<void> _logout() async {
@@ -238,6 +247,7 @@ class _MainScaffoldState extends State<MainScaffold>
         profile: profile,
         group: group,
         onSwitchGroup: widget.onSwitchGroup,
+        onInitialLoadDone: _startPrefetch,
       ),
       ReportEditorScreen(
         key: _reportKey,
@@ -279,7 +289,9 @@ class _MainScaffoldState extends State<MainScaffold>
 
     return [
       for (var i = 0; i < views.length; i++)
-        _builtTabs.contains(i) ? views[i] : const SizedBox.shrink(),
+        _prefetchTabs || _builtTabs.contains(i)
+            ? views[i]
+            : const SizedBox.shrink(),
     ];
   }
 

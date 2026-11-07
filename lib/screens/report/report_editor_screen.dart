@@ -233,10 +233,19 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
     return _metricRepo.getForGroup(groupId);
   }
 
+  /// Fetches periods and metrics in parallel; metrics only depend on the
+  /// periods when there is no group to take the id from.
+  Future<(List<IbadatPeriod>, List<GroupMetric>)> _fetchPeriodsAndMetrics() {
+    final periodsFuture = _fetchPeriods();
+    final metricsFuture = widget.profile.isAdmin || widget.group != null
+        ? _fetchMetrics(const [])
+        : periodsFuture.then(_fetchMetrics);
+    return (periodsFuture, metricsFuture).wait;
+  }
+
   Future<void> _reloadPeriods() async {
     try {
-      final periods = await _fetchPeriods();
-      final metrics = await _fetchMetrics(periods);
+      final (periods, metrics) = await _fetchPeriodsAndMetrics();
       if (!mounted) return;
       final newSelected = _selectedPeriod != null
           ? periods.firstWhere(
@@ -279,8 +288,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
 
   Future<void> _loadExisting() async {
     try {
-      final periods = await _fetchPeriods();
-      final metrics = await _fetchMetrics(periods);
+      final (periods, metrics) = await _fetchPeriodsAndMetrics();
       final selected = periods.isNotEmpty ? periods.first : null;
 
       IbadatReport? existing;
@@ -677,8 +685,30 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
 
   @override
   Widget build(BuildContext context) {
+    final canSave = !_isLoading && _visibleMetrics.isNotEmpty;
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // Compact save button that stays in place while the form scrolls.
+      floatingActionButton: canSave
+          ? FloatingActionButton.small(
+              heroTag: 'report_save_fab',
+              tooltip: S.of(context).save,
+              onPressed: _isSaving ? null : _save,
+              backgroundColor: AccentProvider.instance.current.accentDark,
+              foregroundColor: Colors.white,
+              shape: const CircleBorder(),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.check_rounded, size: 22),
+            )
+          : null,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -703,7 +733,9 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                        // Extra bottom space so the floating save button never
+                        // covers the last card or the main save button.
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 72),
                         child: Column(
                           children: [
                             Container(

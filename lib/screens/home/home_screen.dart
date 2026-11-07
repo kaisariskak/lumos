@@ -75,11 +75,15 @@ class HomeScreen extends StatefulWidget {
   group; // null allowed only for admin without a selected group
   final VoidCallback onSwitchGroup;
 
+  /// Called once, when the first network load finishes (successfully or not).
+  final VoidCallback? onInitialLoadDone;
+
   const HomeScreen({
     super.key,
     required this.profile,
     required this.group,
     required this.onSwitchGroup,
+    this.onInitialLoadDone,
   });
 
   @override
@@ -110,6 +114,7 @@ class HomeScreenState extends State<HomeScreen> {
   // True once data (cached or fresh) is on screen; later loads keep it visible.
   bool _hasData = false;
   bool _snapshotTried = false;
+  bool _initialLoadReported = false;
 
   // Admin: list of group sections
   List<_GroupSection> _sections = [];
@@ -232,6 +237,10 @@ class HomeScreenState extends State<HomeScreen> {
         // Always clear the spinner so it never gets stuck when a silentReload
         // incremented _loadVersion while this initial load was still running.
         if (mounted) setState(() => _isLoading = false);
+        if (mounted && !_initialLoadReported) {
+          _initialLoadReported = true;
+          widget.onInitialLoadDone?.call();
+        }
       }
     });
   }
