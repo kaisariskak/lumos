@@ -223,6 +223,12 @@ class AppStrings {
 
   // ── Custom Categories ──────────────────────────────────
   final String customCatsTitle;
+  final String pdfExportTitle;
+  final String pdfExportSubtitle;
+  final String pdfExportGroup;
+  final String pdfExportMonth;
+  final String pdfExportGenerate;
+  final String pdfExportNoData;
   final String customCatsHint;
   final String customCatAdd;
   final String customCatNewTitle;
@@ -458,6 +464,12 @@ class AppStrings {
     required this.currentWeekLabel,
     required this.weeksAgoSuffix,
     required this.customCatsTitle,
+    required this.pdfExportTitle,
+    required this.pdfExportSubtitle,
+    required this.pdfExportGroup,
+    required this.pdfExportMonth,
+    required this.pdfExportGenerate,
+    required this.pdfExportNoData,
     required this.customCatsHint,
     required this.customCatAdd,
     required this.customCatNewTitle,
@@ -712,6 +724,12 @@ const _kk = AppStrings(
   currentWeekLabel: 'Ағымдағы апта',
   weeksAgoSuffix: ' апта бұрын',
   customCatsTitle: 'Көрсеткіштер',
+  pdfExportTitle: 'PDF-ке экспорттау',
+  pdfExportSubtitle: 'Топ қатысушыларының айлық көрсеткіштері',
+  pdfExportGroup: 'Топ',
+  pdfExportMonth: 'Ай',
+  pdfExportGenerate: 'PDF жасау',
+  pdfExportNoData: 'Таңдалған айда деректер жоқ',
   customCatsHint:
       'Топқа арнайы көрсеткіштер қосыңыз. Олар есеп бетінде пайда болады.',
   customCatAdd: 'Жаңа көрсеткіш қосу',
@@ -979,6 +997,12 @@ const _ru = AppStrings(
   pinWrong: 'Неверный PIN-код',
   pinMismatch: 'PIN-коды не совпадают',
   customCatsTitle: 'Показатели',
+  pdfExportTitle: 'Экспорт в PDF',
+  pdfExportSubtitle: 'Месячные показатели участников группы',
+  pdfExportGroup: 'Группа',
+  pdfExportMonth: 'Месяц',
+  pdfExportGenerate: 'Сформировать PDF',
+  pdfExportNoData: 'За выбранный месяц данных нет',
   customCatsHint:
       'Добавьте специальные показатели для группы. Они появятся в отчёте.',
   customCatAdd: 'Добавить показатель',

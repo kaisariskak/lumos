@@ -23,6 +23,7 @@ import '../../services/group_admin_transfer_service.dart';
 import '../../services/pin_service.dart';
 import '../../widgets/account_section.dart';
 import '../pin/pin_screen.dart';
+import 'pdf_export_sheet.dart';
 
 class _AdminPalette {
   static const bgTop = Color(0xFF101820);
@@ -1856,6 +1857,8 @@ class _AdminScreenState extends State<AdminScreen> {
 
       // ── Одна карточка: выбор группы + период + код + показатели ──
       if (hasGroups) _buildGroupOperationsCard(),
+      if (hasGroups) const SizedBox(height: 16),
+      if (hasGroups) _buildPdfExportCard(),
       if (hasGroups) const SizedBox(height: 16),
 
       // ── Личный период админа ── доступен всегда, даже без групп
@@ -3740,6 +3743,48 @@ class _AdminScreenState extends State<AdminScreen> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildPdfExportCard() {
+    final s = S.of(context);
+    return _AdminSettingsCard(
+      icon: Icons.picture_as_pdf_rounded,
+      title: s.pdfExportTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            s.pdfExportSubtitle,
+            style: const TextStyle(color: _AdminPalette.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => showPdfExportSheet(
+              context,
+              groups: _myGroups,
+              initialGroup: _adminSelectedGroup,
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _AdminPalette.text,
+              side: const BorderSide(color: _AdminPalette.lineStrong),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: const Icon(
+              Icons.file_download_outlined,
+              color: _AdminPalette.gold,
+              size: 20,
+            ),
+            label: Text(
+              s.pdfExportTitle,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
