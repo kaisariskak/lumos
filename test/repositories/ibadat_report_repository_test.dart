@@ -138,8 +138,50 @@ void main() {
         'metric-custom': 7,
       });
       expect(saved.metricValues, {'metric-a': 11, 'metric-custom': 7});
+      expect(store.singleMetricValueReads, isEmpty);
     },
   );
+
+  test('upsertReport of an existing report writes header and values '
+      'without reading values back', () async {
+    final store = _FakeIbadatReportDataStore(
+      upsertResult: {
+        'id': 'report-1',
+        'user_id': 'user-1',
+        'group_id': 'group-1',
+        'period_id': 'period-1',
+        'month': 4,
+        'year': 2026,
+      },
+      metricValuesByReportId: {
+        'report-1': {'metric-a': 3},
+      },
+    );
+    final repository = IbadatReportRepository.withStore(store);
+
+    final saved = await repository.upsertReport(
+      IbadatReport(
+        id: 'report-1',
+        userId: 'user-1',
+        groupId: 'group-1',
+        periodId: 'period-1',
+        month: 4,
+        year: 2026,
+        metricValues: {'metric-a': 8, 'metric-b': 2},
+      ),
+      storedMetricIds: {'metric-a'},
+    );
+
+    expect(store.lastOnConflict, 'user_id,group_id,period_id');
+    expect(store.lastStoredMetricIds, {'metric-a'});
+    expect(store.metricValuesByReportId['report-1'], {
+      'metric-a': 8,
+      'metric-b': 2,
+    });
+    expect(saved.id, 'report-1');
+    expect(saved.metricValues, {'metric-a': 8, 'metric-b': 2});
+    expect(store.singleMetricValueReads, isEmpty);
+  });
 
   test('getGroupReports hydrates metric values in one batch lookup', () async {
     final store = _FakeIbadatReportDataStore(
@@ -201,6 +243,7 @@ class _FakeIbadatReportDataStore extends IbadatReportDataStore {
 
   Map<String, dynamic>? lastUpsertPayload;
   String? lastOnConflict;
+  Set<String>? lastStoredMetricIds;
 
   @override
   Future<Map<String, dynamic>?> getReport({
@@ -255,8 +298,10 @@ class _FakeIbadatReportDataStore extends IbadatReportDataStore {
   @override
   Future<void> replaceMetricValues(
     String reportId,
-    Map<String, int> metricValues,
-  ) async {
+    Map<String, int> metricValues, {
+    Set<String>? storedMetricIds,
+  }) async {
+    lastStoredMetricIds = storedMetricIds;
     metricValuesByReportId[reportId] = Map<String, int>.from(metricValues);
   }
 }

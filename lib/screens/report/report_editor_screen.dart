@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../cache/startup_cache.dart';
 import '../../l10n/app_strings.dart';
 import '../../models/group_metric.dart';
 import '../../models/ibadat_group.dart';
@@ -13,6 +16,7 @@ import '../../repositories/group_metric_repository.dart';
 import '../../repositories/ibadat_period_repository.dart';
 import '../../repositories/ibadat_report_repository.dart';
 import '../../theme/accent_provider.dart';
+import '../../utils/perf_log.dart';
 import '../../utils/week_utils.dart';
 import 'manual_value_dialog.dart';
 
@@ -167,7 +171,15 @@ class _ArrowBtn extends StatelessWidget {
 }
 
 class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBindingObserver {
-  void reloadPeriods() => _reloadPeriods();
+  /// Refresh requested on every switch to the tab; skipped when the data was
+  /// loaded moments ago, since nothing on the server is likely to change.
+  void reloadPeriods() {
+    final last = _lastLoadedAt;
+    if (last != null && DateTime.now().difference(last) < _freshFor) return;
+    _reloadPeriods();
+  }
+
+  static const _freshFor = Duration(seconds: 30);
 
   late final IbadatReportRepository _repo;
   late final IbadatPeriodRepository _periodRepo;
@@ -184,6 +196,16 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
   bool _isLoading = true;
   bool _isSaving = false;
 
+  /// When periods, metrics and the report were last fetched successfully.
+  DateTime? _lastLoadedAt;
+
+  /// The fetch currently running, so overlapping triggers (initial load, tab
+  /// switch, app resume) share one round of requests instead of repeating it.
+  Future<void>? _loadInFlight;
+
+  String get _snapshotName =>
+      'report_editor:${widget.profile.isAdmin ? 'admin' : widget.group?.id}';
+
   @override
   void initState() {
     super.initState();
@@ -199,7 +221,61 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
       month: now.month,
       year: now.year,
     );
-    _loadExisting();
+    _initialLoad();
+  }
+
+  /// Shows the last saved snapshot right away, then refreshes from the server.
+  Future<void> _initialLoad() async {
+    await _restoreSnapshot();
+    await _loadExisting();
+  }
+
+  Future<void> _restoreSnapshot() async {
+    try {
+      final json = await StartupCache.read(widget.profile.id, _snapshotName);
+      if (json is! Map || !mounted || !_isLoading) return;
+      final map = Map<String, dynamic>.from(json);
+      final periods = [
+        for (final p in map['periods'] as List)
+          IbadatPeriod.fromJson(Map<String, dynamic>.from(p as Map)),
+      ];
+      final metrics = [
+        for (final m in map['metrics'] as List)
+          GroupMetric.fromJson(Map<String, dynamic>.from(m as Map)),
+      ];
+      final report = map['report'] == null
+          ? null
+          : IbadatReport.fromJson(
+              Map<String, dynamic>.from(map['report'] as Map),
+            );
+      final selected = periods.isNotEmpty ? periods.first : null;
+      if (report == null || report.periodId != selected?.id) return;
+      setState(() {
+        _periods = periods;
+        _groupMetrics = metrics;
+        _selectedPeriod = selected;
+        _report = report;
+        _isLoading = false;
+      });
+    } catch (_) {
+      // A broken snapshot just means a normal load.
+    }
+  }
+
+  /// Saves what the editor shows by default (the latest period) for the next
+  /// start; a different period picked by the user is not cached.
+  void _writeSnapshot() {
+    final first = _periods.isNotEmpty ? _periods.first : null;
+    if (_selectedPeriod?.id != first?.id || _report.periodId != first?.id) {
+      return;
+    }
+    unawaited(
+      StartupCache.write(widget.profile.id, _snapshotName, {
+        'periods': [for (final p in _periods) p.toCacheJson()],
+        'metrics': [for (final m in _groupMetrics) m.toCacheJson()],
+        'report': _report.toCacheJson(),
+      }),
+    );
   }
 
   @override
@@ -243,7 +319,28 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
     return (periodsFuture, metricsFuture).wait;
   }
 
-  Future<void> _reloadPeriods() async {
+  /// Runs [load] unless a load is already in flight, in which case callers
+  /// wait for that one instead of sending the same requests again.
+  Future<void> _sharedLoad(String label, Future<void> Function() load) {
+    final inFlight = _loadInFlight;
+    if (inFlight != null) return inFlight;
+    final future = traceAsync('ReportEditor.$label', load).whenComplete(
+      () => _loadInFlight = null,
+    );
+    _loadInFlight = future;
+    return future;
+  }
+
+  void _markLoaded() {
+    _lastLoadedAt = DateTime.now();
+    _writeSnapshot();
+  }
+
+  Future<void> _reloadPeriods() => _sharedLoad('reloadPeriods', _fetchReload);
+
+  Future<void> _loadExisting() => _sharedLoad('loadExisting', _fetchExisting);
+
+  Future<void> _fetchReload() async {
     try {
       final (periods, metrics) = await _fetchPeriodsAndMetrics();
       if (!mounted) return;
@@ -281,12 +378,13 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
           );
         }
       });
+      _markLoaded();
     } catch (_) {
       // Keep the current editor state if background refresh fails.
     }
   }
 
-  Future<void> _loadExisting() async {
+  Future<void> _fetchExisting() async {
     try {
       final (periods, metrics) = await _fetchPeriodsAndMetrics();
       final selected = periods.isNotEmpty ? periods.first : null;
@@ -310,6 +408,9 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
 
       if (!mounted) return;
       setState(() {
+        // Unsaved additions made on the cached snapshot only carry over when
+        // they still belong to the same period.
+        if (selected?.id != _selectedPeriod?.id) _deltas.clear();
         _periods = periods;
         _groupMetrics = metrics;
         _selectedPeriod = selected;
@@ -326,6 +427,7 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
         }
         _isLoading = false;
       });
+      _markLoaded();
     } catch (_) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -370,6 +472,8 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
   }
 
   Future<void> _save() async {
+    // A second tap can arrive before the disabled button is rebuilt.
+    if (_isSaving) return;
     final period = _selectedPeriod;
     if (period == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -384,30 +488,38 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
       return;
     }
     setState(() => _isSaving = true);
+    final deltas = Map<String, int>.of(_deltas);
     try {
-      // Re-read the period's saved totals so the addition is applied to the
-      // latest data, not to what was loaded when the screen opened.
-      final fresh = await _repo.getReportByPeriod(
-        userId: widget.profile.id,
-        groupId: period.groupId,
-        periodId: period.id,
-      );
-      final base = fresh ??
-          IbadatReport(
-            userId: widget.profile.id,
-            groupId: period.groupId,
-            periodId: period.id,
-            month: period.startDate.month,
-            year: period.startDate.year,
-          );
-      final saved = await _repo.upsertReport(
-        base.copyWith(metricValues: applyReportDeltas(base.metricValues, _deltas)),
-      );
+      final saved = await traceAsync('ReportEditor.save', () async {
+        // Re-read the period's saved totals so the addition is applied to the
+        // latest data, not to what was loaded when the screen opened.
+        final fresh = await _repo.getReportByPeriod(
+          userId: widget.profile.id,
+          groupId: period.groupId,
+          periodId: period.id,
+        );
+        final base = fresh ??
+            IbadatReport(
+              userId: widget.profile.id,
+              groupId: period.groupId,
+              periodId: period.id,
+              month: period.startDate.month,
+              year: period.startDate.year,
+            );
+        return _repo.upsertReport(
+          base.copyWith(
+            metricValues: applyReportDeltas(base.metricValues, deltas),
+          ),
+          // The fresh read already carries every stored value.
+          storedMetricIds: fresh?.metricValues.keys.toSet(),
+        );
+      });
       if (!mounted) return;
       setState(() {
         _report = saved;
         _deltas.clear();
       });
+      _writeSnapshot();
       widget.onSaved?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -416,9 +528,13 @@ class ReportEditorScreenState extends State<ReportEditorScreen> with WidgetsBind
         ),
       );
     } catch (e) {
+      debugPrint('[ReportEditor] save failed: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${S.of(context).error}: $e')),
+        SnackBar(
+          content: Text(S.of(context).reportSaveFailed),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);

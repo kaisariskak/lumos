@@ -198,6 +198,7 @@ AppStrings _strings(String languageCode) {
     allReports: '',
     viewDetail: '',
     reportSaved: '',
+    reportSaveFailed: '',
     reportSaving: '',
     manualValueTitle: '',
     waitingForGroup: '',

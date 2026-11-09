@@ -104,10 +104,13 @@ abstract class IbadatReportDataStore {
     return valuesByReportId;
   }
 
+  /// [storedMetricIds] — metric ids already stored for the report, when the
+  /// caller knows them; lets the store skip looking them up.
   Future<void> replaceMetricValues(
     String reportId,
-    Map<String, int> metricValues,
-  ) {
+    Map<String, int> metricValues, {
+    Set<String>? storedMetricIds,
+  }) {
     throw UnimplementedError();
   }
 }
@@ -175,7 +178,13 @@ class IbadatReportRepository {
     return _hydrateReports(data);
   }
 
-  Future<IbadatReport> upsertReport(IbadatReport report) async {
+  /// [storedMetricIds] — metric ids currently stored for this report (e.g.
+  /// from a just-read copy); when given, no extra lookup is made to find
+  /// values that need deleting.
+  Future<IbadatReport> upsertReport(
+    IbadatReport report, {
+    Set<String>? storedMetricIds,
+  }) async {
     final payload = {
       ...report.toJson(),
       'updated_at': DateTime.now().toIso8601String(),
@@ -212,14 +221,44 @@ class IbadatReportRepository {
       final onConflict = report.periodId != null
           ? 'user_id,group_id,period_id'
           : 'user_id,group_id,month,year';
-      data = await _store.upsertReportHeader(payload, onConflict: onConflict);
+      final knownId = report.id;
+      if (knownId != null) {
+        // The row already exists, so the header and the values are
+        // independent writes: send them together instead of one by one.
+        final results = await Future.wait([
+          _store.upsertReportHeader(payload, onConflict: onConflict),
+          _store.replaceMetricValues(
+            knownId,
+            report.metricValues,
+            storedMetricIds: storedMetricIds,
+          ),
+        ]);
+        data = results[0] as Map<String, dynamic>;
+        if (data['id'] == knownId) {
+          return _withSavedValues(data, report.metricValues);
+        }
+      } else {
+        data = await _store.upsertReportHeader(
+          payload,
+          onConflict: onConflict,
+        );
+      }
     }
 
     final reportId = data['id'] as String?;
     if (reportId != null) {
       await _store.replaceMetricValues(reportId, report.metricValues);
     }
-    return _hydrateReport(data);
+    return _withSavedValues(data, report.metricValues);
+  }
+
+  /// After [replaceMetricValues] the stored values are exactly [values], so
+  /// the saved report is built from them without reading them back.
+  static IbadatReport _withSavedValues(
+    Map<String, dynamic> header,
+    Map<String, int> values,
+  ) {
+    return IbadatReport.fromJson(header).copyWith(metricValues: values);
   }
 
   Future<bool> hasReportsForPeriod({
@@ -429,11 +468,14 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
     Map<String, dynamic> payload, {
     required String onConflict,
   }) async {
-    return await _client
-        .from('ibadat_reports')
-        .upsert(payload, onConflict: onConflict)
-        .select()
-        .single();
+    return traceAsync(
+      'IbadatReportStore.upsertReportHeader',
+      () async => await _client
+          .from('ibadat_reports')
+          .upsert(payload, onConflict: onConflict)
+          .select()
+          .single(),
+    );
   }
 
   @override
@@ -597,8 +639,9 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
   @override
   Future<void> replaceMetricValues(
     String reportId,
-    Map<String, int> metricValues,
-  ) async {
+    Map<String, int> metricValues, {
+    Set<String>? storedMetricIds,
+  }) async {
     final rows = metricValues.entries
         .map(
           (entry) => {
@@ -609,25 +652,36 @@ class _SupabaseIbadatReportDataStore extends IbadatReportDataStore {
         )
         .toList();
 
-    if (rows.isNotEmpty) {
-      await _client
-          .from('report_metric_values')
-          .upsert(rows, onConflict: 'report_id,metric_id');
-    }
+    // The upsert never removes metric ids, so the stale-id lookup gives the
+    // same answer before or after it — run both at once.
+    final results = await Future.wait<Object?>([
+      if (rows.isNotEmpty)
+        traceAsync(
+          'IbadatReportStore.upsertMetricValues rows=${rows.length}',
+          () async => await _client
+              .from('report_metric_values')
+              .upsert(rows, onConflict: 'report_id,metric_id'),
+        ),
+      if (storedMetricIds == null) getMetricValues(reportId),
+    ]);
 
-    final existing = await getMetricValues(reportId);
-    final staleMetricIds = existing.keys
+    final existingIds = storedMetricIds ??
+        (results.last as Map<String, int>).keys.toSet();
+    final staleMetricIds = existingIds
         .where((metricId) => !metricValues.containsKey(metricId))
         .toList();
     if (staleMetricIds.isEmpty) {
       return;
     }
 
-    await _client
-        .from('report_metric_values')
-        .delete()
-        .eq('report_id', reportId)
-        .inFilter('metric_id', staleMetricIds);
+    await traceAsync(
+      'IbadatReportStore.deleteStaleMetricValues',
+      () async => await _client
+          .from('report_metric_values')
+          .delete()
+          .eq('report_id', reportId)
+          .inFilter('metric_id', staleMetricIds),
+    );
   }
 
   List<Map<String, dynamic>> _castRows(dynamic data) {

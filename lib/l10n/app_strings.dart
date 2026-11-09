@@ -180,6 +180,7 @@ class AppStrings {
   final String allReports;
   final String viewDetail;
   final String reportSaved;
+  final String reportSaveFailed;
   final String reportSaving;
   final String manualValueTitle;
 
@@ -431,6 +432,7 @@ class AppStrings {
     required this.allReports,
     required this.viewDetail,
     required this.reportSaved,
+    required this.reportSaveFailed,
     required this.reportSaving,
     required this.manualValueTitle,
     required this.waitingForGroup,
@@ -689,6 +691,8 @@ const _kk = AppStrings(
   allReports: 'Барлық есептер',
   viewDetail: 'Толығырақ',
   reportSaved: 'Есеп сақталды ✅',
+  reportSaveFailed:
+      'Есепті сақтау мүмкін болмады. Интернетті тексеріп, қайта көріңіз.',
   reportSaving: 'Сақталуда...',
   manualValueTitle: 'Мәнді енгізу',
 
@@ -952,6 +956,8 @@ const _ru = AppStrings(
   allReports: 'Все отчёты',
   viewDetail: 'Подробнее',
   reportSaved: 'Отчёт сохранён ✅',
+  reportSaveFailed:
+      'Не удалось сохранить отчёт. Проверьте интернет и попробуйте ещё раз.',
   reportSaving: 'Сохраняется...',
   manualValueTitle: 'Ввести значение',
 
